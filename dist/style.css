@@ -15,3 +15,13 @@ button,input,select{font:inherit}select{color:inherit;outline-offset:4px}.size-r
 
 .parts-toggle{display:none}.total>span{display:block}.total{flex-direction:column-reverse;gap:3px;align-items:flex-end}.total>span{font-size:9px}
 @media(max-width:760px){.parts-toggle{display:flex;justify-content:space-between;align-items:center;width:100%;padding:10px 0;border:0;border-top:1px solid var(--line);background:transparent;font-size:10px;color:#6c7862}.parts-toggle span{font-size:16px}.parts-details{display:none}.parts-details.is-expanded{display:block}.parts-details .parts{margin-top:8px}.total{flex-shrink:0;margin-left:8px}.total>span{font-size:8px}}
+
+/* Shared numbered headings and collapsed-by-default advanced settings */
+.section-heading .step-heading{font-size:12px;font-weight:600;line-height:1.4;letter-spacing:normal;margin:0}
+.section-heading .step-heading .step-number{font-size:10px;color:#92968a;margin-right:10px;font-weight:400}
+.collapsible-section>summary.section-heading{list-style:none;cursor:pointer;margin-bottom:0}
+.collapsible-section>summary.section-heading::-webkit-details-marker{display:none}
+.collapsible-section[open]>summary.section-heading{margin-bottom:20px}
+.collapse-summary-end{display:inline-flex;align-items:center;gap:7px}
+.collapse-chevron{width:8px;height:8px;flex-shrink:0;display:inline-block;border-right:1.5px solid #92968a;border-bottom:1.5px solid #92968a;transform:rotate(45deg);transition:transform .18s;margin:-4px 4px 0 8px}
+.collapsible-section[open] .collapse-chevron{transform:rotate(225deg);margin-top:4px}
