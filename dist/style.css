@@ -17,8 +17,8 @@ button,input,select{font:inherit}select{color:inherit;outline-offset:4px}.size-r
 @media(max-width:760px){.parts-toggle{display:flex;justify-content:space-between;align-items:center;width:100%;padding:10px 0;border:0;border-top:1px solid var(--line);background:transparent;font-size:10px;color:#6c7862}.parts-toggle span{font-size:16px}.parts-details{display:none}.parts-details.is-expanded{display:block}.parts-details .parts{margin-top:8px}.total{flex-shrink:0;margin-left:8px}.total>span{font-size:8px}}
 
 /* Shared numbered headings and collapsed-by-default advanced settings */
-.section-heading .step-heading{font-size:12px;font-weight:600;line-height:1.4;letter-spacing:normal;margin:0}
-.section-heading .step-heading .step-number{font-size:10px;color:#92968a;margin-right:10px;font-weight:400}
+.section-heading .step-heading{font-size:18px;font-weight:700;line-height:1.45;letter-spacing:.01em;margin:0}
+.section-heading .step-heading .step-number{font-size:16px;color:#92968a;margin-right:10px;font-weight:600}
 .collapsible-section>summary.section-heading{list-style:none;cursor:pointer;margin-bottom:0}
 .collapsible-section>summary.section-heading::-webkit-details-marker{display:none}
 .collapsible-section[open]>summary.section-heading{margin-bottom:20px}
