@@ -1,5 +1,5 @@
 export const PITCH = 8;
-export const HEIGHT = 3.25;
+export const HEIGHT = 3.15;
 export function placements(rows, cols) {
   if (![rows, cols].every(n => Number.isInteger(n) && n >= 2 && n <= 32)) throw new Error('縦・横は2〜32の整数を入力してください。');
   const parts=[];
@@ -27,7 +27,13 @@ export function indexedMesh(positions) {
   return {numProp:3,vertProperties:new Float32Array(points),triVerts:new Uint32Array(indices)};
 }
 export function binarySTL(mesh) {
-  const {vertProperties:p,triVerts:t,numProp:s}=mesh,buffer=new ArrayBuffer(84+t.length/3*50),d=new DataView(buffer);
+  const {vertProperties:p,triVerts:indices,numProp:s}=mesh,t=[];
+  // STL stores float32 vertices. Omit faces that collapse to zero area at that precision.
+  for(let i=0;i<indices.length;i+=3){
+    const a=Array.from(p.subarray(indices[i]*s,indices[i]*s+3),Math.fround),b=Array.from(p.subarray(indices[i+1]*s,indices[i+1]*s+3),Math.fround),c=Array.from(p.subarray(indices[i+2]*s,indices[i+2]*s+3),Math.fround);
+    if(![ [a,b], [b,c], [c,a] ].some(([left,right])=>left.every((value,k)=>value===right[k])))t.push(...indices.subarray(i,i+3));
+  }
+  const buffer=new ArrayBuffer(84+t.length/3*50),d=new DataView(buffer);
   new Uint8Array(buffer).set(new TextEncoder().encode('Tileform | millimeters | united solid'));
   d.setUint32(80,t.length/3,true);
   for(let i=0;i<t.length;i+=3){const a=Array.from(p.subarray(t[i]*s,t[i]*s+3)),b=Array.from(p.subarray(t[i+1]*s,t[i+1]*s+3)),c=Array.from(p.subarray(t[i+2]*s,t[i+2]*s+3));const u=b.map((v,k)=>v-a[k]),v=c.map((v,k)=>v-a[k]);const n=[u[1]*v[2]-u[2]*v[1],u[2]*v[0]-u[0]*v[2],u[0]*v[1]-u[1]*v[0]],l=Math.hypot(...n)||1;const o=84+i/3*50;[...n.map(x=>x/l),...a,...b,...c].forEach((x,k)=>d.setFloat32(o+k*4,x,true));}
