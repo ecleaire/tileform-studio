@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import {OrbitControls} from './vendor/OrbitControls.js';
 import {placements,parseSTL,PITCH,HEIGHT} from './core.js';
 const $=s=>document.querySelector(s),$$=s=>document.querySelectorAll(s);
-const state={rows:4,cols:3,color:false,modelColor:'#d3d5d8',explode:false,view:'iso',plateWidth:180,plateDepth:180},sources={},geometries={},materials={},meshes=[];
+const state={rows:2,cols:4,color:false,modelColor:'#d3d5d8',explode:false,view:'iso',plateWidth:180,plateDepth:180},sources={},geometries={},materials={},meshes=[];
 const platePresets=[
   ['a1-mini','Bambu Lab A1 mini',180,180],
   ['bambu-256','Bambu Lab A1 / P1S / X1C',256,256],
