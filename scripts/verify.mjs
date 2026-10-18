@@ -23,14 +23,14 @@ for(const type of ['corner','edge']){
 }
 for(const [r,c] of [[2,2],[2,4],[4,3],[3,4],[6,6],[2,32],[32,2]]){
  const p=placements(r,c);assert.equal(p.length,r*c);assert.equal(p.filter(x=>x.type==='corner').length,4);assert.equal(p.filter(x=>x.type==='edge').length,2*(r-2)+2*(c-2));assert.equal(p.filter(x=>x.type==='center').length,(r-2)*(c-2));
- // Every closed wall must face an exterior boundary in preview and STL placements.
+ // Original STL face directions must point toward neighboring tiles rather than outward.
  for(const part of p.filter(part=>part.type!=='center')){
   const expected=[];
-  if(part.c===0)expected.push('-1,0');if(part.c===c-1)expected.push('1,0');
-  if(part.r===0)expected.push('0,1');if(part.r===r-1)expected.push('0,-1');
+  if(part.c===0)expected.push('1,0');if(part.c===c-1)expected.push('-1,0');
+  if(part.r===0)expected.push('0,-1');if(part.r===r-1)expected.push('0,1');
   const angle=part.q*Math.PI/2;
   const actual=closedWalls[part.type].map(([x,y])=>`${Math.round(x*Math.cos(angle)-y*Math.sin(angle))||0},${Math.round(x*Math.sin(angle)+y*Math.cos(angle))||0}`);
-  assert.deepEqual(actual.sort(),expected.sort(),`${r}x${c}: ${part.type} at row ${part.r}, column ${part.c} faces inward`);
+  assert.deepEqual(actual.sort(),expected.sort(),`${r}x${c}: ${part.type} at row ${part.r}, column ${part.c} faces outward instead of toward the tile center`);
  }
  const start=performance.now();const out=await unite(sources,r,c);assert.equal(out.components,1);const b=new DataView(out.buffer);assert.equal(out.buffer.byteLength,84+50*b.getUint32(80,true));const stl=parseSTL(out.buffer);assert.deepEqual(stl.size.map(v=>Math.round(v*100)/100),[c*8,r*8,r>2&&c>2?3.15:3.12]);
  // Re-import the exported STL and check every topological edge occurs twice, in opposite directions.
