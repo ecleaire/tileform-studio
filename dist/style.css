@@ -34,3 +34,9 @@ dialog{max-height:calc(100dvh - 36px);overflow-y:auto}
 .help-notices li{font-size:10px;line-height:1.8;margin-bottom:9px;padding-left:0}
 .help-notices li:last-child{margin-bottom:0}
 .help-notices a{text-decoration:underline;text-underline-offset:2px}
+
+/* Additional help guidance */
+.help-settings{padding-top:12px}
+.help-settings h3{font-size:12px;margin:0 0 9px;font-weight:700}
+.help-settings p{font-size:11px;line-height:1.85;margin:0 0 11px}
+.help-settings p:last-child{margin-bottom:0}

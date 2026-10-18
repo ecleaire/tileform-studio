@@ -1,6 +1,6 @@
 # TILEFORM Studio
 
-**v1.1.0** · [アプリを開く](https://ecleaire.github.io/tileform-studio/)
+**v1.1.1** · [アプリを開く](https://ecleaire.github.io/tileform-studio/)
 
 縦と横のマス数を指定するだけで、3種類のSTLパーツを自動配置し、3Dプリント用のタイルを作成できるWebアプリです。インストール不要で、PC・スマートフォンから利用できます。
 

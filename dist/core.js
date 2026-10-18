@@ -1,5 +1,12 @@
 export const PITCH = 8;
 export const HEIGHT = 3.15;
+// Step to the next integer even if the input is temporarily fractional.
+export function stepSize(value, direction, fallback=2) {
+  const current=typeof value==='string'&&value.trim()===''?NaN:Number(value);
+  const start=Number.isFinite(current)?current:fallback;
+  const next=direction>0?Math.floor(start)+1:Math.ceil(start)-1;
+  return Math.max(2,Math.min(32,next));
+}
 export function placements(rows, cols) {
   if (![rows, cols].every(n => Number.isInteger(n) && n >= 2 && n <= 32)) throw new Error('縦・横は2〜32の整数を入力してください。');
   const parts=[];

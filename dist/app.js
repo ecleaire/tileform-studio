@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import {OrbitControls} from './vendor/OrbitControls.js';
-import {placements,parseSTL,PITCH,HEIGHT} from './core.js';
+import {placements,parseSTL,PITCH,HEIGHT,stepSize} from './core.js';
 const $=s=>document.querySelector(s),$$=s=>document.querySelectorAll(s);
 const state={rows:2,cols:4,color:false,modelColor:'#d3d5d8',explode:false,view:'iso',plateWidth:180,plateDepth:180},sources={},geometries={},materials={},meshes=[];
 const platePresets=[
@@ -33,9 +33,11 @@ function resize(){if(!renderer)return;const wrap=$('#canvas-wrap'),w=wrap.client
 }
 function setView(view){state.view=view;$$('[data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===view));const dist=1800;if(view==='top'){camera.position.set(0,-.001,dist);camera.up.set(0,1,0);}else if(view==='bottom'){camera.position.set(0,.001,-dist);camera.up.set(0,1,0);}else{camera.position.set(1000,-1400,1650);camera.up.set(0,0,1);}controls.target.set(0,0,1);camera.lookAt(controls.target);controls.update();}
 function fit(){
-  const pitch=state.explode?10.4:PITCH,w=Math.max(state.cols*pitch,state.plateWidth),h=Math.max(state.rows*pitch,state.plateDepth);
-  // A bounding circle keeps rectangular plates visible at any viewing angle.
-  const radius=Math.hypot(w,h)/2+15,wrap=$('#canvas-wrap');
+  const pitch=state.explode?10.4:PITCH,tileW=state.cols*pitch,tileH=state.rows*pitch;
+  // Keep the tile clearly visible while retaining some context from the print bed.
+  const w=Math.max(tileW,Math.min(state.plateWidth,tileW*1.8));
+  const h=Math.max(tileH,Math.min(state.plateDepth,tileH*1.8));
+  const radius=Math.hypot(w,h)/2+10,wrap=$('#canvas-wrap');
   zoomSpan=Math.max(radius,radius*wrap.clientHeight/wrap.clientWidth);camera.zoom=1;resize();controls.target.set(0,0,1);controls.update();
 }
 function clear(g){while(g.children.length){const c=g.children[0];g.remove(c);if(c.userData.owned){c.geometry?.dispose();c.material?.map?.dispose();c.material?.dispose();}}}
@@ -85,12 +87,13 @@ const customOption=document.createElement('option');customOption.value='custom';
 $('#plate-preset').onchange=e=>{const preset=platePresets.find(p=>p[0]===e.target.value);if(preset){$('#plate-width').value=preset[2];$('#plate-depth').value=preset[3];applyPlateInput();}};
 $$('#plate-width,#plate-depth').forEach(input=>input.addEventListener('input',()=>{$('#plate-preset').value='custom';applyPlateInput();}));
 function applyInput(){const rows=Number($('#rows').value),cols=Number($('#cols').value);try{placements(rows,cols);$('#input-error').textContent='';state.rows=rows;state.cols=cols;if(loaded){assemble();fit();}$('#export').disabled=!loaded||busy;}catch(e){$('#input-error').textContent=e.message;$('#export').disabled=true;}}
-async function exportSTL(){if(busy||!loaded)return;busy=true;const rows=state.rows,cols=state.cols;$('#export').disabled=true;$('#export span').textContent='一体化しています…';$('#export-status').textContent='接合面を結合しています。大きなモデルは少し時間がかかります。';
+function setSizeInputLocked(locked){$('#rows,#cols,.stepper button,[data-size]').forEach(el=>{el.disabled=locked;});}
+async function exportSTL(){if(busy||!loaded)return;busy=true;const rows=state.rows,cols=state.cols;setSizeInputLocked(true);$('#export').disabled=true;$('#export span').textContent='一体化しています…';$('#export-status').textContent='接合面を結合しています。大きなモデルは少し時間がかかります。';
   try{const result=await new Promise((resolve,reject)=>{worker=new Worker(new URL('./export-worker.js',import.meta.url),{type:'module'});worker.onmessage=({data})=>{if(data.error)reject(new Error(data.error));if(data.result)resolve(data.result);};worker.onerror=e=>reject(new Error(e.message||'出力処理を開始できませんでした。'));worker.postMessage({sources,rows,cols});});const blob=new Blob([result.buffer],{type:'model/stl'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`tileform_${rows}x${cols}_${cols*8}x${rows*8}mm.stl`;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);$('#export-status').textContent=`保存しました · ${result.triangles.toLocaleString()}面 · 単一ソリッド · ${(blob.size/1024).toFixed(0)} KB`;
-  }catch(e){$('#export-status').textContent=`出力できませんでした：${e.message}`;}finally{worker?.terminate();worker=null;busy=false;$('#export span').textContent='STLをダウンロード';applyInput();}}
+  }catch(e){$('#export-status').textContent=`出力できませんでした：${e.message}`;}finally{worker?.terminate();worker=null;busy=false;setSizeInputLocked(false);$('#export span').textContent='STLをダウンロード';applyInput();}}
 $('#parts-toggle').onclick=()=>{const expanded=$('#parts-toggle').getAttribute('aria-expanded')!=='true';$('#parts-toggle').setAttribute('aria-expanded',String(expanded));$('#parts-details').classList.toggle('is-expanded',expanded);$('#parts-toggle').innerHTML=expanded?'パーツの内訳を閉じる<span aria-hidden="true">−</span>':'パーツの内訳を表示<span aria-hidden="true">＋</span>';};
 $('#help-open').onclick=()=>$('#help').showModal();$('#help-close').onclick=()=>$('#help').close();$('#help').onclick=e=>{if(e.target===$('#help')){const b=$('#help').getBoundingClientRect();if(e.clientX<b.left||e.clientX>b.right||e.clientY<b.top||e.clientY>b.bottom)$('#help').close();}};
-$$('.stepper button').forEach(b=>b.onclick=()=>{const el=$(`#${b.dataset.axis}`);el.value=Math.min(32,Math.max(2,(Number(el.value)||2)+Number(b.dataset.delta)));applyInput();});$$('#rows,#cols').forEach(i=>i.addEventListener('input',applyInput));$$('[data-size]').forEach(b=>b.onclick=()=>{const [r,c]=b.dataset.size.split(',');$('#rows').value=r;$('#cols').value=c;applyInput();});
+$('.stepper button').forEach(b=>b.onclick=()=>{if(busy)return;const el=$(`#${b.dataset.axis}`);el.value=stepSize(el.value,Number(b.dataset.delta),state[b.dataset.axis]);applyInput();});$$('#rows,#cols').forEach(i=>i.addEventListener('input',applyInput));$$('[data-size]').forEach(b=>b.onclick=()=>{const [r,c]=b.dataset.size.split(',');$('#rows').value=r;$('#cols').value=c;applyInput();});
 function setModelColor(hex){
   state.modelColor=hex.toLowerCase();
   $('#model-color').value=state.modelColor;$('#model-color-hex').value=state.modelColor.toUpperCase();
@@ -114,7 +117,7 @@ $$('.rgb-inputs input').forEach(input=>input.addEventListener('input',()=>{
 }));
 $$('[data-color]').forEach(button=>button.onclick=()=>setModelColor(button.dataset.color));
 setModelColor(state.modelColor);
-$('#color-toggle').onchange=e=>{state.color=e.target.checked;for(const m of meshes)m.material=state.color?materials[m.userData.type]:materials.single;};$('#explode-toggle').onchange=e=>{state.explode=e.target.checked;if(loaded){assemble();fit();}};$$('[data-view]').forEach(b=>b.onclick=()=>{if(loaded)setView(b.dataset.view);});$('#fit').onclick=()=>{if(loaded){fit();setView('iso');}};$('#zoom-in').onclick=()=>{if(camera){camera.zoom=Math.min(10,camera.zoom*1.2);camera.updateProjectionMatrix();}};$('#zoom-out').onclick=()=>{if(camera){camera.zoom=Math.max(.2,camera.zoom/1.2);camera.updateProjectionMatrix();}};$('#export').onclick=exportSTL;
+$('#color-toggle').onchange=e=>{state.color=e.target.checked;for(const m of meshes)m.material=state.color?materials[m.userData.type]:materials.single;};$('#explode-toggle').onchange=e=>{state.explode=e.target.checked;if(loaded){assemble();fit();}};$$('[data-view]').forEach(b=>b.onclick=()=>{if(loaded)setView(b.dataset.view);});$('#fit').onclick=()=>{if(loaded)fit();};$('#zoom-in').onclick=()=>{if(camera){camera.zoom=Math.min(10,camera.zoom*1.2);camera.updateProjectionMatrix();}};$('#zoom-out').onclick=()=>{if(camera){camera.zoom=Math.max(.2,camera.zoom/1.2);camera.updateProjectionMatrix();}};$('#export').onclick=exportSTL;
 try{
   init();await Promise.all(['corner','edge','center'].map(async type=>{const res=await fetch(`./assets/${type}.stl`);if(!res.ok)throw new Error('STLを読み込めませんでした。');sources[type]=parseSTL(await res.arrayBuffer());const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(sources[type].positions,3));g.computeVertexNormals();geometries[type]=g;materials[type]=new THREE.MeshStandardMaterial({color:colors[type],roughness:.7,metalness:0,flatShading:true,side:THREE.DoubleSide});}));materials.single=new THREE.MeshStandardMaterial({color:state.modelColor,roughness:.7,flatShading:true,side:THREE.DoubleSide});loaded=true;applyInput();for(const type of ['corner','edge','center'])thumb(type);$('#loading').remove();
 }catch(e){$('#loading').textContent=`プレビューを開始できませんでした：${e.message}`;$('#model-status').textContent='読み込みエラー';console.error(e);}
