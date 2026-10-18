@@ -7,8 +7,9 @@ export function placements(rows, cols) {
     const top=r===0,bottom=r===rows-1,left=c===0,right=c===cols-1;
     const type=(top||bottom)&&(left||right)?'corner':(top||bottom||left||right)?'edge':'center';
     let q=0;
-    if(type==='corner') q=bottom&&right?0:top&&right?1:top&&left?2:3;
-    if(type==='edge') q=right?0:top?1:left?2:3;
+    // The new corner closes -X/+Y; the new edge closes -X.
+    if(type==='corner') q=top&&left?0:bottom&&left?1:bottom&&right?2:3;
+    if(type==='edge') q=left?0:bottom?1:right?2:3;
     parts.push({type,q,r,c,x:c*PITCH,y:(rows-1-r)*PITCH});
   }
   return parts;
