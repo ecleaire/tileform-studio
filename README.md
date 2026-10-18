@@ -4,6 +4,8 @@
 
 **[公開サイトを開く](https://ecleaire.github.io/tileform-studio/)** · [ソースコード](https://github.com/ecleaire/tileform-studio)
 
+**バージョン：v1.0.0**
+
 インストール不要で、ほかのPCからも公開URLで利用できます。初期値は **縦4 × 横3**。提供された3つのSTL（各8 × 8 mm、角・端の厚さ3.12 mm、中の厚さ3.15 mm）を使い、外寸は横24 × 縦32 × 高さ3.15 mmになります。
 
 ## 使い方
