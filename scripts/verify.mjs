@@ -33,17 +33,23 @@ for(const [r,c] of [[2,2],[2,4],[4,3],[3,4],[4,6],[6,6],[2,32],[32,2],[32,32]]){
   assert.deepEqual(actual.sort(),expected.sort(),`${r}x${c}: ${part.type} at row ${part.r}, column ${part.c} faces inward`);
  }
  const start=performance.now();const out=await unite(sources,r,c);assert.equal(out.components,1);const b=new DataView(out.buffer);assert.equal(out.buffer.byteLength,84+50*b.getUint32(80,true));const stl=parseSTL(out.buffer);assert.deepEqual(stl.size.map(v=>Math.round(v*100)/100),[c*8,r*8,r>2&&c>2?3.15:3.12]);
- // Re-import the exported STL and check every topological edge occurs twice, in opposite directions.
- if(r*c<=64){
-   const m=indexedMesh(stl.positions),edges=new Map();
-   for(let i=0;i<m.triVerts.length;i+=3)for(let j=0;j<3;j++){
-     const a=m.triVerts[i+j],b=m.triVerts[i+(j+1)%3],key=Math.min(a,b)+','+Math.max(a,b),e=edges.get(key)||{n:0,d:0};
-     e.n++;e.d+=a<b?1:-1;edges.set(key,e);
-   }
-   const bad=[...edges.values()].filter(e=>e.n!==2||e.d!==0);
-   assert.equal(bad.length,0,`${r}x${c}: STL is not watertight`);
+ // Check ALL sizes, including 32x32, for opposing edges (watertight, oriented mesh).
+ // Numeric edge codes in a Float64Array avoid an enormous string-key Map.
+ const m=indexedMesh(stl.positions),vertexCount=m.vertProperties.length/3,triangles=m.triVerts;
+ assert.ok(2*vertexCount*vertexCount<Number.MAX_SAFE_INTEGER,'too many vertices for numeric edge keys');
+ const edges=new Float64Array(triangles.length);
+ for(let i=0;i<triangles.length;i+=3)for(let j=0;j<3;j++){
+   const a=triangles[i+j],b=triangles[i+(j+1)%3];
+   assert.notEqual(a,b,`${r}x${c}: degenerate edge`);
+   edges[i+j]=2*(Math.min(a,b)*vertexCount+Math.max(a,b))+(a<b?0:1);
  }
- console.log(`${r}x${c}: ${out.triangles} triangles, single ${r*c<=64?'watertight':'connected'} solid, ${out.volume.toFixed(2)} mm³, ${Math.round(performance.now()-start)} ms`);
+ edges.sort();
+ assert.equal(edges.length%2,0,`${r}x${c}: odd edge count`);
+ for(let i=0;i<edges.length;i+=2){
+   if(edges[i]%2!==0||edges[i+1]!==edges[i]+1)
+     assert.fail(`${r}x${c}: non-manifold or unoriented edge at sorted index ${i}`);
+ }
+ console.log(`${r}x${c}: ${out.triangles} triangles, single watertight solid, ${out.volume.toFixed(2)} mm³, ${Math.round(performance.now()-start)} ms`);
 }
 for(const [value,delta,fallback,expected] of [['2.5',1,2,3],['2.5',-1,2,2],['4',1,2,5],['4',-1,2,3],['',1,4,5],['bad',-1,4,3],['32',1,2,32],['2',-1,2,2]])
  assert.equal(stepSize(value,delta,fallback),expected,`stepSize(${value},${delta})`);

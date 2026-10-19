@@ -23,6 +23,8 @@ jobs:
           node-version: 22
       - name: Verify printable geometry
         run: node scripts/verify.mjs
+      - name: Verify browser interactions
+        run: node scripts/verify-browser.mjs
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

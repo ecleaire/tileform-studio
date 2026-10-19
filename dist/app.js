@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import {OrbitControls} from './vendor/OrbitControls.js';
-import {placements,parseSTL,PITCH,HEIGHT,stepSize} from './core.js';
+import {placements,parseSTL,PITCH,HEIGHT,stepSize} from './core.js?v=1.1.2';
 const $=s=>document.querySelector(s),$$=s=>document.querySelectorAll(s);
 const state={rows:2,cols:4,color:false,modelColor:'#d3d5d8',explode:false,view:'iso',plateWidth:180,plateDepth:180},sources={},geometries={},materials={},meshes=[];
 const platePresets=[
@@ -17,20 +17,25 @@ let scene,camera,renderer,controls,group,dimensions,plate,zoomSpan=40,worker,loa
 function lighting(s){s.add(new THREE.AmbientLight(0xffffff,1.3));const a=new THREE.DirectionalLight(0xffffff,3);a.position.set(-20,-30,65);s.add(a);const b=new THREE.DirectionalLight(0xffffff,1);b.position.set(35,20,15);s.add(b);}
 function init(){
   const wrap=$('#canvas-wrap');renderer=new THREE.WebGLRenderer({antialias:true,alpha:true});renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.setClearColor(0,0);renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.05;wrap.prepend(renderer.domElement);renderer.domElement.setAttribute('aria-label','自動配置されたタイルの3Dモデル');renderer.domElement.setAttribute('role','img');
-  scene=new THREE.Scene();lighting(scene);camera=new THREE.OrthographicCamera(-40,40,40,-40,.1,10000);camera.up.set(0,0,1);controls=new OrbitControls(camera,renderer.domElement);controls.enableDamping=true;controls.dampingFactor=.09;controls.screenSpacePanning=true;controls.minZoom=.2;controls.maxZoom=10;controls.target.set(0,0,1);
+  scene=new THREE.Scene();lighting(scene);camera=new THREE.OrthographicCamera(-40,40,40,-40,.1,10000);camera.up.set(0,0,1);controls=new OrbitControls(camera,renderer.domElement);controls.enableDamping=true;controls.dampingFactor=.09;controls.screenSpacePanning=true;controls.addEventListener('change',updateLabelScales);controls.minZoom=.2;controls.maxZoom=10;controls.target.set(0,0,1);
   group=new THREE.Group();scene.add(group);dimensions=new THREE.Group();scene.add(dimensions);
   plate=new THREE.Group();scene.add(plate);updatePlate();
   new ResizeObserver(()=>resize()).observe(wrap);resize();setView('iso');
   renderer.setAnimationLoop(()=>{controls.update();renderer.render(scene,camera);});
 }
-function resize(){if(!renderer)return;const wrap=$('#canvas-wrap'),w=wrap.clientWidth,h=wrap.clientHeight;if(!w||!h)return;renderer.setSize(w,h);camera.left=-zoomSpan*w/h;camera.right=zoomSpan*w/h;camera.top=zoomSpan;camera.bottom=-zoomSpan;camera.updateProjectionMatrix();
+function updateLabelScales(){
+  if(!camera||!dimensions)return;
+  const height=$('#canvas-wrap').clientHeight;
+  if(!height)return;
+  const unit=2*zoomSpan/(height*camera.zoom),width=140*unit,labelHeight=24*unit;
   for(const sprite of dimensions.children.filter(c=>c.isSprite)){
-    const unit=2*zoomSpan/h,width=140*unit,height=24*unit;sprite.scale.set(width,height,1);
+    sprite.scale.set(width,labelHeight,1);
     sprite.position.copy(sprite.userData.anchor);
     if(sprite.userData.side==='right')sprite.position.x+=width/2;
-    else sprite.position.y-=height/2;
+    else sprite.position.y-=labelHeight/2;
   }
 }
+function resize(){if(!renderer)return;const wrap=$('#canvas-wrap'),w=wrap.clientWidth,h=wrap.clientHeight;if(!w||!h)return;renderer.setSize(w,h);camera.left=-zoomSpan*w/h;camera.right=zoomSpan*w/h;camera.top=zoomSpan;camera.bottom=-zoomSpan;camera.updateProjectionMatrix();updateLabelScales();}
 function setView(view){state.view=view;$$('[data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===view));const dist=1800;if(view==='top'){camera.position.set(0,-.001,dist);camera.up.set(0,1,0);}else if(view==='bottom'){camera.position.set(0,.001,-dist);camera.up.set(0,1,0);}else{camera.position.set(1000,-1400,1650);camera.up.set(0,0,1);}controls.target.set(0,0,1);camera.lookAt(controls.target);controls.update();}
 function fit(){
   const pitch=state.explode?10.4:PITCH,tileW=state.cols*pitch,tileH=state.rows*pitch;
@@ -41,7 +46,7 @@ function fit(){
   zoomSpan=Math.max(radius,radius*wrap.clientHeight/wrap.clientWidth);camera.zoom=1;resize();controls.target.set(0,0,1);controls.update();
 }
 function clear(g){while(g.children.length){const c=g.children[0];g.remove(c);if(c.userData.owned){c.geometry?.dispose();c.material?.map?.dispose();c.material?.dispose();}}}
-function label(text,position,side){const c=document.createElement('canvas');c.width=512;c.height=88;const x=c.getContext('2d');x.font='500 42px "Space Grotesk", sans-serif';x.textAlign='center';x.textBaseline='middle';x.fillStyle='#f4f6ee';x.fillRect(0,13,512,62);x.fillStyle='#859375';x.fillText(text,256,46,492);const tex=new THREE.CanvasTexture(c);tex.colorSpace=THREE.SRGBColorSpace;const s=new THREE.Sprite(new THREE.SpriteMaterial({map:tex,depthTest:false,transparent:true,toneMapped:false}));s.position.copy(position);const labelWidth=Math.max(24,Math.max(state.plateWidth,state.plateDepth)*.18);s.scale.set(labelWidth,labelWidth*88/512,1);s.userData.owned=true;s.userData.anchor=position.clone();s.userData.side=side;dimensions.add(s);}
+function label(text,position,side){const c=document.createElement('canvas');c.width=512;c.height=88;const x=c.getContext('2d');x.font='500 42px "Space Grotesk", sans-serif';x.textAlign='center';x.textBaseline='middle';x.fillStyle='#f4f6ee';x.fillRect(0,13,512,62);x.fillStyle='#859375';x.fillText(text,256,46,492);const tex=new THREE.CanvasTexture(c);tex.colorSpace=THREE.SRGBColorSpace;const s=new THREE.Sprite(new THREE.SpriteMaterial({map:tex,depthTest:false,transparent:true,toneMapped:false}));s.position.copy(position);const labelWidth=Math.max(24,Math.max(state.plateWidth,state.plateDepth)*.18);s.scale.set(labelWidth,labelWidth*88/512,1);s.userData.owned=true;s.userData.anchor=position.clone();s.userData.side=side;dimensions.add(s);updateLabelScales();}
 function dimensionLines(){clear(dimensions);const w=state.cols*8,h=state.rows*8,pts=[];const add=(a,b)=>pts.push(...a,...b);const gap=state.explode?3:0,x=w/2+7+state.cols*gap/2,y=-h/2-7-state.rows*gap/2;
   add([-w/2,y,0],[w/2,y,0]);add([-w/2,y-1,0],[-w/2,y+1,0]);add([w/2,y-1,0],[w/2,y+1,0]);add([x,-h/2,0],[x,h/2,0]);add([x-1,-h/2,0],[x+1,-h/2,0]);add([x-1,h/2,0],[x+1,h/2,0]);
   const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(pts,3));const l=new THREE.LineSegments(g,new THREE.LineBasicMaterial({color:0xa7b29b,transparent:true,opacity:.8}));l.userData.owned=true;dimensions.add(l);label(`${state.cols}マス, ${w} mm`,new THREE.Vector3(0,y,0));label(`${state.rows}マス, ${h} mm`,new THREE.Vector3(x+3,0,0),'right');}
@@ -89,27 +94,31 @@ $$('#plate-width,#plate-depth').forEach(input=>input.addEventListener('input',()
 function applyInput(){const rows=Number($('#rows').value),cols=Number($('#cols').value);try{placements(rows,cols);$('#input-error').textContent='';state.rows=rows;state.cols=cols;if(loaded){assemble();fit();}$('#export').disabled=!loaded||busy;}catch(e){$('#input-error').textContent=e.message;$('#export').disabled=true;}}
 function setSizeInputLocked(locked){$('#rows,#cols,.stepper button,[data-size]').forEach(el=>{el.disabled=locked;});}
 async function exportSTL(){if(busy||!loaded)return;busy=true;const rows=state.rows,cols=state.cols;setSizeInputLocked(true);$('#export').disabled=true;$('#export span').textContent='一体化しています…';$('#export-status').textContent='接合面を結合しています。大きなモデルは少し時間がかかります。';
-  try{const result=await new Promise((resolve,reject)=>{worker=new Worker(new URL('./export-worker.js',import.meta.url),{type:'module'});worker.onmessage=({data})=>{if(data.error)reject(new Error(data.error));if(data.result)resolve(data.result);};worker.onerror=e=>reject(new Error(e.message||'出力処理を開始できませんでした。'));worker.postMessage({sources,rows,cols});});const blob=new Blob([result.buffer],{type:'model/stl'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`tileform_${rows}x${cols}_${cols*8}x${rows*8}mm.stl`;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);$('#export-status').textContent=`保存しました · ${result.triangles.toLocaleString()}面 · 単一ソリッド · ${(blob.size/1024).toFixed(0)} KB`;
+  try{const result=await new Promise((resolve,reject)=>{worker=new Worker(new URL('./export-worker.js?v=1.1.2',import.meta.url),{type:'module'});worker.onmessage=({data})=>{if(data.error)reject(new Error(data.error));if(data.result)resolve(data.result);};worker.onerror=e=>reject(new Error(e.message||'出力処理を開始できませんでした。'));worker.postMessage({sources,rows,cols});});const blob=new Blob([result.buffer],{type:'model/stl'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`tileform_${rows}x${cols}_${cols*8}x${rows*8}mm.stl`;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);$('#export-status').textContent=`保存しました · ${result.triangles.toLocaleString()}面 · 単一ソリッド · ${(blob.size/1024).toFixed(0)} KB`;
   }catch(e){$('#export-status').textContent=`出力できませんでした：${e.message}`;}finally{worker?.terminate();worker=null;busy=false;setSizeInputLocked(false);$('#export span').textContent='STLをダウンロード';applyInput();}}
 $('#parts-toggle').onclick=()=>{const expanded=$('#parts-toggle').getAttribute('aria-expanded')!=='true';$('#parts-toggle').setAttribute('aria-expanded',String(expanded));$('#parts-details').classList.toggle('is-expanded',expanded);$('#parts-toggle').innerHTML=expanded?'パーツの内訳を閉じる<span aria-hidden="true">−</span>':'パーツの内訳を表示<span aria-hidden="true">＋</span>';};
 $('#help-open').onclick=()=>$('#help').showModal();$('#help-close').onclick=()=>$('#help').close();$('#help').onclick=e=>{if(e.target===$('#help')){const b=$('#help').getBoundingClientRect();if(e.clientX<b.left||e.clientX>b.right||e.clientY<b.top||e.clientY>b.bottom)$('#help').close();}};
 $('.stepper button').forEach(b=>b.onclick=()=>{if(busy)return;const el=$(`#${b.dataset.axis}`);el.value=stepSize(el.value,Number(b.dataset.delta),state[b.dataset.axis]);applyInput();});$$('#rows,#cols').forEach(i=>i.addEventListener('input',applyInput));$$('[data-size]').forEach(b=>b.onclick=()=>{const [r,c]=b.dataset.size.split(',');$('#rows').value=r;$('#cols').value=c;applyInput();});
-function setModelColor(hex){
+function setModelColor(hex,preserveHexInput=false){
   state.modelColor=hex.toLowerCase();
-  $('#model-color').value=state.modelColor;$('#model-color-hex').value=state.modelColor.toUpperCase();
+  $('#model-color').value=state.modelColor;if(!preserveHexInput)$('#model-color-hex').value=state.modelColor.toUpperCase();
   ['r','g','b'].forEach((channel,i)=>{$(`#color-${channel}`).value=parseInt(state.modelColor.slice(1+i*2,3+i*2),16);});
   $$('[data-color]').forEach(button=>{const active=button.dataset.color===state.modelColor;button.classList.toggle('active',active);button.setAttribute('aria-pressed',String(active));});
   $('#color-error').textContent='';
   if(materials.single){materials.single.color.set(state.modelColor);if(!state.color)for(const mesh of meshes)mesh.material=materials.single;}
 }
 $('#model-color').addEventListener('input',e=>setModelColor(e.target.value));
-function applyHexColor(e){
+function applyHexColor(e,finalize=false){
   let hex=e.target.value.trim().replace(/^#/,'');
-  if(!/^(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(hex)){$('#color-error').textContent='HEXは3桁または6桁の16進数で入力してください。';return;}
-  if(hex.length===3)hex=hex.split('').map(c=>c+c).join('');setModelColor('#'+hex);
+  if(!/^(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(hex)){
+    $('#color-error').textContent=finalize?'HEXは3桁または6桁の16進数で入力してください。':'';
+    return;
+  }
+  if(hex.length===3)hex=hex.split('').map(c=>c+c).join('');
+  setModelColor('#'+hex,!finalize);
 }
-$('#model-color-hex').addEventListener('change',applyHexColor);
-$('#model-color-hex').addEventListener('input',e=>{if(/^[0-9a-f]{3}$/i.test(e.target.value.trim().replace(/^#/,''))){$('#color-error').textContent='';return;}applyHexColor(e);});
+$('#model-color-hex').addEventListener('change',e=>applyHexColor(e,true));
+$('#model-color-hex').addEventListener('input',e=>applyHexColor(e,false));
 $$('.rgb-inputs input').forEach(input=>input.addEventListener('input',()=>{
   const values=['r','g','b'].map(channel=>$(`#color-${channel}`).value);
   if(!values.every(value=>value!==''&&Number.isInteger(Number(value))&&Number(value)>=0&&Number(value)<=255)){$('#color-error').textContent='RGBはそれぞれ0〜255の整数で入力してください。';return;}
@@ -117,7 +126,7 @@ $$('.rgb-inputs input').forEach(input=>input.addEventListener('input',()=>{
 }));
 $$('[data-color]').forEach(button=>button.onclick=()=>setModelColor(button.dataset.color));
 setModelColor(state.modelColor);
-$('#color-toggle').onchange=e=>{state.color=e.target.checked;for(const m of meshes)m.material=state.color?materials[m.userData.type]:materials.single;};$('#explode-toggle').onchange=e=>{state.explode=e.target.checked;if(loaded){assemble();fit();}};$$('[data-view]').forEach(b=>b.onclick=()=>{if(loaded)setView(b.dataset.view);});$('#fit').onclick=()=>{if(loaded)fit();};$('#zoom-in').onclick=()=>{if(camera){camera.zoom=Math.min(10,camera.zoom*1.2);camera.updateProjectionMatrix();}};$('#zoom-out').onclick=()=>{if(camera){camera.zoom=Math.max(.2,camera.zoom/1.2);camera.updateProjectionMatrix();}};$('#export').onclick=exportSTL;
+$('#color-toggle').onchange=e=>{state.color=e.target.checked;for(const m of meshes)m.material=state.color?materials[m.userData.type]:materials.single;};$('#explode-toggle').onchange=e=>{state.explode=e.target.checked;if(loaded){assemble();fit();}};$$('[data-view]').forEach(b=>b.onclick=()=>{if(loaded)setView(b.dataset.view);});$('#fit').onclick=()=>{if(loaded)fit();};$('#zoom-in').onclick=()=>{if(camera){camera.zoom=Math.min(10,camera.zoom*1.2);camera.updateProjectionMatrix();updateLabelScales();}};$('#zoom-out').onclick=()=>{if(camera){camera.zoom=Math.max(.2,camera.zoom/1.2);camera.updateProjectionMatrix();updateLabelScales();}};$('#export').onclick=exportSTL;
 try{
   init();await Promise.all(['corner','edge','center'].map(async type=>{const res=await fetch(`./assets/${type}.stl`);if(!res.ok)throw new Error('STLを読み込めませんでした。');sources[type]=parseSTL(await res.arrayBuffer());const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(sources[type].positions,3));g.computeVertexNormals();geometries[type]=g;materials[type]=new THREE.MeshStandardMaterial({color:colors[type],roughness:.7,metalness:0,flatShading:true,side:THREE.DoubleSide});}));materials.single=new THREE.MeshStandardMaterial({color:state.modelColor,roughness:.7,flatShading:true,side:THREE.DoubleSide});loaded=true;applyInput();for(const type of ['corner','edge','center'])thumb(type);$('#loading').remove();
 }catch(e){$('#loading').textContent=`プレビューを開始できませんでした：${e.message}`;$('#model-status').textContent='読み込みエラー';console.error(e);}
