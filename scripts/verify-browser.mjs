@@ -18,8 +18,10 @@ const server=spawn(process.execPath,['scripts/serve.mjs'],{stdio:'ignore'});
 const browser=spawn(chrome,['--headless=new','--no-sandbox','--disable-dev-shm-usage',
   '--enable-unsafe-swiftshader','--use-gl=angle','--use-angle=swiftshader',
   '--remote-allow-origins=*','--remote-debugging-port='+port,
-  '--user-data-dir='+dir,'about:blank'],{stdio:'ignore'});
-let ws;
+  '--user-data-dir='+dir,'about:blank'],{stdio:['ignore','ignore','pipe']});
+let ws,inspectPage;
+let chromeErrors='';
+browser.stderr.on('data',chunk=>{chromeErrors=(chromeErrors+chunk.toString()).slice(-7000);});
 async function poll(check,title,timeout=30000){
   const start=Date.now();
   while(Date.now()-start<timeout){
@@ -51,11 +53,13 @@ try{
     const id=++seq;pending.set(id,{resolve,reject});
     ws.send(JSON.stringify({id,method,params}));
   });
+  ws.addEventListener('message',({data})=>{const entry=JSON.parse(data);if(entry.method==='Runtime.exceptionThrown')console.error('Browser exception:',entry.params?.exceptionDetails?.exception?.description||entry.params?.exceptionDetails?.text);});
   const evaluate=async expression=>{
     const reply=await send('Runtime.evaluate',{expression,returnByValue:true,awaitPromise:true});
     if(reply.exceptionDetails)throw Error(reply.exceptionDetails.exception?.description||reply.exceptionDetails.text);
     return reply.result.value;
   };
+  inspectPage=evaluate;
   await send('Page.enable');
   await send('Runtime.enable');
   await send('Page.navigate',{url:'http://127.0.0.1:4173/'});
@@ -83,7 +87,18 @@ try{
   await evaluate("document.querySelectorAll('.collapsible-section')[1].open=false");
   assert.equal(await evaluate("[...document.querySelectorAll('.collapsible-section')].every(x=>!x.open)"),true);
   console.log('Browser smoke checks passed (desktop and mobile): startup, presets, stepper, view, HEX, STL export');
+}catch(error){
+  console.error('Browser test failed:',error?.stack||error);
+  if(inspectPage){
+    try{
+      const status=await inspectPage("({url:location.href,ready:document.readyState,loading:document.querySelector('#loading')?.textContent,modelStatus:document.querySelector('#model-status')?.textContent,exportDisabled:document.querySelector('#export')?.disabled})");
+      console.error('Page state:',JSON.stringify(status));
+    }catch(e){console.error('Unable to inspect page:',e.message);}
+  }
+  console.error('Chrome diagnostics:',chromeErrors.slice(-3000));
+  throw error;
 }finally{
   ws?.close();browser.kill('SIGKILL');server.kill('SIGKILL');
-  rmSync(dir,{recursive:true,force:true});
+  try{rmSync(dir,{recursive:true,force:true,maxRetries:12,retryDelay:300});}
+  catch(e){console.warn('Browser temp cleanup deferred:',e.message);}
 }
