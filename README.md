@@ -1,6 +1,6 @@
 # TILEFORM Studio
 
-**v1.1.2** · [アプリを開く](https://ecleaire.github.io/tileform-studio/)
+**v1.1.3** · [アプリを開く](https://ecleaire.github.io/tileform-studio/)
 
 縦と横のマス数を指定するだけで、3種類のSTLパーツを自動配置し、3Dプリント用のタイルを作成できるWebアプリです。インストール不要で、PC・スマートフォンから利用できます。
 
@@ -42,3 +42,5 @@
 - STL出力時に接合部分を微調整します。印刷前にスライサーで形状・寸法を確認してください。
 - [Three.js](https://threejs.org/)（MIT）と[Manifold](https://github.com/elalish/manifold)（Apache-2.0）を使用しています。元のSTLデータの権利は提供者に帰属します。
 - LEGO®はLEGOグループの商標です。TILEFORM StudioはLEGOグループの承認・提携を受けていない非公式ツールです。
+
+最新版では、STLも画面のプログラムと同じバージョンのURLで読み込み、古いモデルのキャッシュとの混在を防ぎます。形状検証では外周の壁の連続性と内側のくぼみの向きを確認し、ブラウザでも実際のプレビューモデルを検証しています。

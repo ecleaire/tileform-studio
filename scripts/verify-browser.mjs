@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import {spawn,spawnSync} from 'node:child_process';
-import {mkdtempSync,rmSync} from 'node:fs';
+import {mkdtempSync,rmSync,readFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
-import {join} from 'node:path';
+import {join,resolve,extname,sep} from 'node:path';
+import {createServer as createHttpServer} from 'node:http';
 import {createServer} from 'node:net';
 
 const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
@@ -14,7 +15,24 @@ const port=await new Promise((resolve,reject)=>{
   server.listen(0,'127.0.0.1',()=>{const p=server.address().port;server.close(()=>resolve(p));});
 });
 const dir=mkdtempSync(join(tmpdir(),'tileform-browser-'));
-const server=spawn(process.execPath,['scripts/serve.mjs'],{stdio:'ignore'});
+// Serve long-lived legacy model responses first, then navigate the same browser to
+// the current app. Its model requests must escape the warmed HTTP cache.
+const version=JSON.parse(readFileSync('package.json','utf8')).version;
+const assetRequests=[],root=resolve('dist'),mime={'.html':'text/html','.js':'text/javascript','.css':'text/css','.stl':'application/octet-stream','.wasm':'application/wasm'};
+const server=createHttpServer((req,res)=>{
+ const url=new URL(req.url,'http://localhost');
+ if(url.pathname==='/warmup.html'){res.writeHead(200,{'Content-Type':'text/html'});res.end('<!doctype html><title>Cache warmup</title>');return;}
+ const path=resolve(root,'.'+(url.pathname==='/'?'/index.html':url.pathname));
+ if(!path.startsWith(root+sep)){res.writeHead(403);res.end();return;}
+ try{
+  const model=/\/assets\/(corner|edge|center)\.stl$/.test(url.pathname);
+  const body=model&&!url.search?Buffer.from('stale-model:'+url.pathname):readFileSync(path);
+  if(model)assetRequests.push(url.pathname+url.search);
+  res.writeHead(200,{'Content-Type':mime[extname(path)]||'application/octet-stream','Cache-Control':model?'public, max-age=31536000':'no-cache'});res.end(body);
+ }catch{res.writeHead(404);res.end();}
+});
+await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(0,'127.0.0.1',resolve);});
+const origin='http://127.0.0.1:'+server.address().port;
 const browser=spawn(chrome,['--headless=new','--no-sandbox','--disable-dev-shm-usage',
   '--enable-unsafe-swiftshader','--use-gl=angle','--use-angle=swiftshader',
   '--remote-allow-origins=*','--remote-debugging-port='+port,
@@ -31,7 +49,7 @@ async function poll(check,title,timeout=30000){
   throw Error('Timed out waiting for '+title);
 }
 try{
-  await poll(async()=>(await fetch('http://127.0.0.1:4173/')).ok,'local server');
+  await poll(async()=>(await fetch(origin+'/')).ok,'local server');
   const endpoint=await poll(async()=>{
     const tabs=await (await fetch('http://127.0.0.1:'+port+'/json/list')).json();
     return tabs.find(t=>t.type==='page')?.webSocketDebuggerUrl;
@@ -60,14 +78,50 @@ try{
     return reply.result.value;
   };
   inspectPage=evaluate;
+  await send('Page.addScriptToEvaluateOnNewDocument',{source:`
+    window.__tileformScenes=[];window.__THREE_DEVTOOLS__=new EventTarget();
+    window.__THREE_DEVTOOLS__.addEventListener('observe',event=>{if(event.detail.isScene)window.__tileformScenes.push(event.detail);});
+  `});
   await send('Page.enable');
   await send('Runtime.enable');
-  await send('Page.navigate',{url:'http://127.0.0.1:4173/'});
+  await send('Page.navigate',{url:origin+'/warmup.html'});
+  await poll(()=>evaluate("document.title==='Cache warmup'"),'cache warmup page');
+  assert.equal(await evaluate("(async()=>{const urls=['corner','edge','center'].map(type=>'/assets/'+type+'.stl');for(const url of urls){const stale=await (await fetch(url)).text();if(!stale.startsWith('stale-model:'))return false;}return true;})()"),true);
+  assert.equal(assetRequests.length,3);
+  // These repeat requests must hit the browser's cache, proving the fixture is warm.
+  await evaluate("Promise.all(['corner','edge','center'].map(type=>fetch('/assets/'+type+'.stl').then(r=>r.text())))");
+  assert.equal(assetRequests.length,3,'legacy models should remain in browser HTTP cache');
+  await send('Page.navigate',{url:origin+'/'});
   await poll(()=>evaluate("document.querySelector('#model-status')?.textContent.includes('自動配置済み') && !document.querySelector('#export')?.disabled"),'3D model initialized',45000);
+  assert.deepEqual(assetRequests.slice(3).sort(),['corner','edge','center'].map(type=>`/assets/${type}.stl?v=${version}`).sort(),'current app must bypass the warmed legacy model cache');
   const initial=await evaluate("({rows:document.querySelector('#rows').value,cols:document.querySelector('#cols').value,preset:document.querySelector('[data-size].active')?.dataset.size,closed:[...document.querySelectorAll('.collapsible-section')].every(x=>!x.open)})");
   assert.deepEqual(initial,{rows:'2',cols:'4',preset:'2,4',closed:true});
   await evaluate("document.querySelector('[data-size=\"4,6\"]').click()");
   assert.equal(await evaluate("document.querySelector('#project-name').textContent"),'Tile_4×6');
+  // Raycast the actual rendered meshes, including their Three.js transforms.
+  // This catches preview-only rotation errors and mismatched cached source models.
+  const orientation=await evaluate(`(async()=>{
+    const {Raycaster,Vector3}=await import('./vendor/three.js');
+    const scene=window.__tileformScenes.find(scene=>scene.children.some(group=>group.children.some(mesh=>mesh.userData.type)));
+    if(!scene)return {ok:false,reason:'Missing preview scene'};
+    scene.updateMatrixWorld(true);
+    const parts=scene.children.flatMap(group=>group.children.filter(mesh=>mesh.userData.type));
+    const ray=new Raycaster(),rows=4,cols=6;
+    function height(mesh,x,y){ray.set(new Vector3(mesh.position.x+x,mesh.position.y+y,10),new Vector3(0,0,-1));return ray.intersectObject(mesh,false)[0]?.point.z;}
+    for(const mesh of parts){
+      const c=Math.round(mesh.position.x/8+(cols-1)/2),r=Math.round((rows-1)/2-mesh.position.y/8);
+      for(const [nx,ny,outer] of [[-1,0,c===0],[1,0,c===cols-1],[0,1,r===0],[0,-1,r===rows-1]]){
+        if(outer&&![-3.5,-2,0,2,3.5].every(t=>height(mesh,nx?nx*3.9:t,ny?ny*3.9:t)>2.5))return {ok:false,reason:'Broken exterior wall',r,c};
+      }
+      for(const dx of [-1,1])for(const dy of [-1,1]){
+        if((dx===-1&&c===0)||(dx===1&&c===cols-1)||(dy===1&&r===0)||(dy===-1&&r===rows-1))continue;
+        const z=height(mesh,dx*3.6,dy*3.6);
+        if(!(z>=0.9&&z<1.1))return {ok:false,reason:'Mismatched inner recess',r,c,z};
+      }
+    }
+    return {ok:true,parts:parts.length};
+  })()`);
+  assert.deepEqual(orientation,{ok:true,parts:24});
   await evaluate("{const el=document.querySelector('#rows');el.value='2.5';el.dispatchEvent(new Event('input',{bubbles:true}));document.querySelector('.stepper button[data-axis=\"rows\"][data-delta=\"1\"]').click();}");
   assert.equal(await evaluate("document.querySelector('#rows').value"),'3');
   await evaluate("document.querySelector('[data-view=\"top\"]').click();document.querySelector('#fit').click()");
@@ -86,7 +140,7 @@ try{
   assert.equal(await evaluate("getComputedStyle(document.querySelector('.studio')).order"),'-1');
   await evaluate("document.querySelectorAll('.collapsible-section')[1].open=false");
   assert.equal(await evaluate("[...document.querySelectorAll('.collapsible-section')].every(x=>!x.open)"),true);
-  console.log('Browser smoke checks passed (desktop and mobile): startup, presets, stepper, view, HEX, STL export');
+  console.log('Browser smoke checks passed (desktop and mobile): legacy STL cache replacement, preview wall/recess orientation, startup, presets, stepper, view, HEX, STL export');
 }catch(error){
   console.error('Browser test failed:',error?.stack||error);
   if(inspectPage){
@@ -98,7 +152,7 @@ try{
   console.error('Chrome diagnostics:',chromeErrors.slice(-3000));
   throw error;
 }finally{
-  ws?.close();browser.kill('SIGKILL');server.kill('SIGKILL');
+  ws?.close();browser.kill('SIGKILL');server.closeAllConnections();await new Promise(resolve=>server.close(resolve));
   try{rmSync(dir,{recursive:true,force:true,maxRetries:12,retryDelay:300});}
   catch(e){console.warn('Browser temp cleanup deferred:',e.message);}
 }

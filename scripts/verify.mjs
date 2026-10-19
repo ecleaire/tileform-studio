@@ -4,22 +4,30 @@ import {placements,parseSTL,indexedMesh,stepSize} from '../dist/core.js';
 import {unite} from '../dist/solid.js';
 const sources={};
 for(const t of ['corner','edge','center']){const b=fs.readFileSync(`dist/assets/${t}.stl`);sources[t]=parseSTL(b.buffer.slice(b.byteOffset,b.byteOffset+b.byteLength));assert.deepEqual(sources[t].size.map(v=>Math.round(v*100)/100),[8,8,t==='center'?3.15:3.12]);}
-// Identify closed walls from the actual source geometry, independent of rotation rules.
-const directions=[[1,0],[-1,0],[0,1],[0,-1]],closedWalls={};
+// Sample the actual raised structure; a side is closed only if its wall is continuous.
+// Also check inward-facing corner recesses, not just total boundary triangle area.
+const directions=[[1,0],[-1,0],[0,1],[0,-1]],closedWalls={},heightCache=new Map();
+function surfaceHeight(type,x,y){
+ const key=`${type}:${x.toFixed(6)}:${y.toFixed(6)}`;
+ if(heightCache.has(key))return heightCache.get(key);
+ const positions=sources[type].positions;let height=-Infinity;
+ for(let i=0;i<positions.length;i+=9){
+  const a=positions.subarray(i,i+3),b=positions.subarray(i+3,i+6),c=positions.subarray(i+6,i+9);
+  const det=(b[1]-c[1])*(a[0]-c[0])+(c[0]-b[0])*(a[1]-c[1]);
+  if(Math.abs(det)<1e-12)continue;
+  const u=((b[1]-c[1])*(x-c[0])+(c[0]-b[0])*(y-c[1]))/det;
+  const v=((c[1]-a[1])*(x-c[0])+(a[0]-c[0])*(y-c[1]))/det,w=1-u-v;
+  if(Math.min(u,v,w)>=-1e-6)height=Math.max(height,u*a[2]+v*b[2]+w*c[2]);
+ }
+ heightCache.set(key,height);return height;
+}
 for(const type of ['corner','edge']){
- const positions=sources[type].positions;
- const areas=directions.map(([nx,ny])=>{
-  const axis=nx?0:1,bound=(nx||ny)*4;let area=0;
-  for(let i=0;i<positions.length;i+=9){
-   const a=Array.from(positions.subarray(i,i+3)),b=Array.from(positions.subarray(i+3,i+6)),c=Array.from(positions.subarray(i+6,i+9));
-   if(![a,b,c].every(v=>Math.abs(v[axis]-bound)<1e-5))continue;
-   const u=b.map((v,k)=>v-a[k]),v=c.map((v,k)=>v-a[k]);
-   area+=Math.hypot(u[1]*v[2]-u[2]*v[1],u[2]*v[0]-u[0]*v[2],u[0]*v[1]-u[1]*v[0])/2;
-  }
-  return area;
- });
- const maximum=Math.max(...areas);closedWalls[type]=directions.filter((_,i)=>Math.abs(areas[i]-maximum)<1e-3);
- assert.equal(closedWalls[type].length,type==='corner'?2:1,`${type}: closed walls must be identifiable`);
+ closedWalls[type]=directions.filter(([nx,ny])=>[-3.5,-2,0,2,3.5].every(t=>surfaceHeight(type,nx?nx*3.9:t,ny?ny*3.9:t)>2.5));
+ assert.equal(closedWalls[type].length,type==='corner'?2:1,`${type}: continuous outer walls must be identifiable`);
+}
+function rotatedHeight(part,x,y){
+ const angle=-part.q*Math.PI/2;
+ return surfaceHeight(part.type,x*Math.cos(angle)-y*Math.sin(angle),x*Math.sin(angle)+y*Math.cos(angle));
 }
 for(const [r,c] of [[2,2],[2,4],[4,3],[3,4],[4,6],[6,6],[2,32],[32,2],[32,32]]){
  const p=placements(r,c);assert.equal(p.length,r*c);assert.equal(p.filter(x=>x.type==='corner').length,4);assert.equal(p.filter(x=>x.type==='edge').length,2*(r-2)+2*(c-2));assert.equal(p.filter(x=>x.type==='center').length,(r-2)*(c-2));
@@ -31,6 +39,12 @@ for(const [r,c] of [[2,2],[2,4],[4,3],[3,4],[4,6],[6,6],[2,32],[32,2],[32,32]]){
   const angle=part.q*Math.PI/2;
   const actual=closedWalls[part.type].map(([x,y])=>`${Math.round(x*Math.cos(angle)-y*Math.sin(angle))||0},${Math.round(x*Math.sin(angle)+y*Math.cos(angle))||0}`);
   assert.deepEqual(actual.sort(),expected.sort(),`${r}x${c}: ${part.type} at row ${part.r}, column ${part.c} faces inward`);
+ }
+ // All four quadrants around each internal grid junction must form a circular recess.
+ for(const part of p)for(const dx of [-1,1])for(const dy of [-1,1]){
+  if((dx===-1&&part.c===0)||(dx===1&&part.c===c-1)||(dy===1&&part.r===0)||(dy===-1&&part.r===r-1))continue;
+  const height=rotatedHeight(part,dx*3.6,dy*3.6);
+  assert.ok(height>=0.9&&height<1.1,`${r}x${c}: ${part.type} at ${part.r},${part.c} has a raised wall at an inner recess`);
  }
  const start=performance.now();const out=await unite(sources,r,c);assert.equal(out.components,1);const b=new DataView(out.buffer);assert.equal(out.buffer.byteLength,84+50*b.getUint32(80,true));const stl=parseSTL(out.buffer);assert.deepEqual(stl.size.map(v=>Math.round(v*100)/100),[c*8,r*8,r>2&&c>2?3.15:3.12]);
  // Check ALL sizes, including 32x32, for opposing edges (watertight, oriented mesh).
