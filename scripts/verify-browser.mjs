@@ -100,7 +100,13 @@ try{
     const createObjectURL=URL.createObjectURL.bind(URL);
     URL.createObjectURL=blob=>{if(blob.type==='model/stl')window.__lastExport=blob;return createObjectURL(blob);};
     window.__tileformScenes=[];window.__THREE_DEVTOOLS__=new EventTarget();
-    window.__THREE_DEVTOOLS__.addEventListener('observe',event=>{if(event.detail.isScene)window.__tileformScenes.push(event.detail);});
+    window.__THREE_DEVTOOLS__.addEventListener('observe',event=>{
+      if(!event.detail.isScene)return;
+      window.__tileformScenes.push(event.detail);
+      event.detail.onBeforeRender=(renderer,scene,camera)=>{
+        if(scene.children.some(group=>group.children.some(mesh=>mesh.userData.type))){window.__tileformScene=scene;window.__tileformCamera=camera;}
+      };
+    });
   `});
   await send('Page.enable');
   await send('Runtime.enable');
@@ -118,6 +124,9 @@ try{
   if(!publicSite)assert.deepEqual(assetRequests.slice(3).sort(),['corner','edge','center'].map(type=>`/assets/${type}.stl?v=${version}`).sort(),'current app must bypass the warmed legacy model cache');
   const initial=await evaluate("({rows:document.querySelector('#rows').value,cols:document.querySelector('#cols').value,preset:document.querySelector('[data-size].active')?.dataset.size,closed:[...document.querySelectorAll('.collapsible-section')].every(x=>!x.open)})");
   assert.deepEqual(initial,{rows:'2',cols:'4',preset:'2,4',closed:true});
+  await evaluate("document.querySelector('#plate-preset').value='custom';document.querySelector('#plate-preset').dispatchEvent(new Event('change'))");
+  await reloadReady('custom printer selection saved');
+  assert.equal(await evaluate("document.querySelector('#plate-preset').value"),'custom');
   await evaluate("document.querySelector('[data-size=\"4,6\"]').click()");
   assert.equal(await evaluate("document.querySelector('#project-name').textContent"),'Tile_4×6');
   // Raycast the actual rendered meshes, including their Three.js transforms.
@@ -184,17 +193,35 @@ try{
   assert.equal(await evaluate("document.querySelector('#export-progressbar').value"),1);
   const output=await evaluate("(async()=>{const buffer=await window.__lastExport.arrayBuffer(),view=new DataView(buffer),n=view.getUint32(80,true),min=[Infinity,Infinity,Infinity],max=[-Infinity,-Infinity,-Infinity];for(let i=0;i<n;i++)for(let j=0;j<9;j++){const x=view.getFloat32(84+i*50+12+j*4,true),axis=j%3;min[axis]=Math.min(min[axis],x);max[axis]=Math.max(max[axis],x);}return {valid:buffer.byteLength===84+50*n,n,size:max.map((v,i)=>Math.round((v-min[i])*100)/100)};})()");
   assert.ok(output.valid&&output.n>0);assert.deepEqual(output.size,[32,16,3.12]);
-  await evaluate("document.querySelector('#settings-reset').click()");
+  await evaluate("{const el=document.querySelector('#explode-toggle');el.checked=true;el.dispatchEvent(new Event('change'));}document.querySelector('[data-view=\"bottom\"]').click();document.querySelector('#settings-reset').click()");
+  assert.equal(await evaluate("document.querySelector('#explode-toggle').checked"),false);
+  assert.equal(await evaluate("document.querySelector('[data-view].active').dataset.view"),'iso');
+
   assert.equal(await evaluate("document.querySelector('#project-name').textContent"),'Tile_2×4');
   assert.equal(await evaluate("document.querySelector('#plate-preset').value"),'a1-mini');
   assert.equal(await evaluate("document.querySelector('#model-color').value"),'#d3d5d8');
+  // Check actual on-screen sprite bounds for narrow viewports and wide models.
+  await evaluate("for(const [id,value] of [['rows','2'],['cols','32']]){const el=document.querySelector('#'+id);el.value=value;el.dispatchEvent(new Event('input'));}");
+  for(const view of ['top','bottom','iso']){
+    await evaluate(`document.querySelector('[data-view="${view}"]').click();document.querySelector('#fit').click();for(let i=0;i<4;i++)document.querySelector('#zoom-in').click()`);
+    await evaluate("new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))");
+    const bounds=await evaluate(`(()=>{
+      const camera=window.__tileformCamera,wrap=document.querySelector('#canvas-wrap'),w=wrap.clientWidth,h=wrap.clientHeight;
+      return window.__tileformScene.children.flatMap(group=>group.children.filter(mesh=>mesh.isSprite)).map(sprite=>{
+        const position=sprite.position.clone().project(camera),width=sprite.scale.x/(camera.right-camera.left)*w*camera.zoom,height=sprite.scale.y/(camera.top-camera.bottom)*h*camera.zoom;
+        return {left:(position.x+1)*w/2-width/2,right:(position.x+1)*w/2+width/2,top:(1-position.y)*h/2-height/2,bottom:(1-position.y)*h/2+height/2,w,h};
+      });
+    })()`);
+    assert.equal(bounds.length,2);
+    for(const box of bounds)assert.ok(box.left>=-0.1&&box.right<=box.w+.1&&box.top>=-.1&&box.bottom<=box.h+.1,`${view}: cropped label ${JSON.stringify(box)}`);
+  }
   await evaluate("localStorage.setItem('tileform.settings.v1','broken JSON')");
   await reloadReady('corrupt settings fallback');
   assert.equal(await evaluate("document.querySelector('#project-name').textContent"),'Tile_2×4');
   await send('Page.addScriptToEvaluateOnNewDocument',{source:"Object.defineProperty(window,'localStorage',{get(){throw new DOMException('Storage disabled','SecurityError');}});"});
   await reloadReady('disabled storage fallback');
   assert.equal(await evaluate("document.querySelector('#project-name').textContent"),'Tile_2×4');
-  console.log('Browser smoke checks passed (desktop and mobile): asset version consistency, preview orientation, startup, presets, maximum size, persisted settings, unavailable storage, progress, cancellation and restart, binary STL export');
+  console.log('Browser smoke checks passed (desktop and mobile): asset version consistency, preview orientation, startup, presets, maximum size, persisted custom selection, full reset, visible mobile labels, unavailable storage, progress, cancellation and restart, binary STL export');
 }catch(error){
   console.error('Browser test failed:',error?.stack||error);
   if(inspectPage){

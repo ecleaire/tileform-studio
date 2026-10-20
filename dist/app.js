@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import {OrbitControls} from './vendor/OrbitControls.js';
-import {placements,parseSTL,PITCH,HEIGHT,stepSize,maxTileSize} from './core.js?v=1.2.0';
-import {DEFAULT_SETTINGS,SETTINGS_KEY,readSettings,writeSettings} from './settings.js?v=1.2.0';
+import {placements,parseSTL,PITCH,HEIGHT,stepSize,maxTileSize} from './core.js?v=1.2.1';
+import {DEFAULT_SETTINGS,SETTINGS_KEY,readSettings,writeSettings} from './settings.js?v=1.2.1';
 const $=s=>document.querySelector(s),$$=s=>document.querySelectorAll(s);
 let restored;try{restored=readSettings(localStorage);}catch{restored={...DEFAULT_SETTINGS};}
 const state={...restored,explode:false,view:'iso'},sources={},geometries={},materials={},meshes=[];
@@ -31,14 +31,22 @@ function init(){
 }
 function updateLabelScales(){
   if(!camera||!dimensions)return;
-  const height=$('#canvas-wrap').clientHeight;
-  if(!height)return;
-  const unit=2*zoomSpan/(height*camera.zoom),width=140*unit,labelHeight=24*unit;
+  const wrap=$('#canvas-wrap'),height=wrap.clientHeight,viewportWidth=wrap.clientWidth;
+  if(!height||!viewportWidth)return;
+  const pixelWidth=Math.max(1,Math.min(140,viewportWidth-16));
+  const unit=2*zoomSpan/(height*camera.zoom),width=pixelWidth*unit,labelHeight=24*unit;
+  camera.updateMatrixWorld();
   for(const sprite of dimensions.children.filter(c=>c.isSprite)){
     sprite.scale.set(width,labelHeight,1);
     sprite.position.copy(sprite.userData.anchor);
     if(sprite.userData.side==='right')sprite.position.x+=width/2;
     else sprite.position.y-=labelHeight/2;
+    // Keep the complete label visible after fitting, zooming, panning or rotating.
+    const projected=sprite.position.clone().project(camera);
+    const limitX=Math.max(0,1-(pixelWidth+16)/viewportWidth),limitY=Math.max(0,1-40/height);
+    projected.x=THREE.MathUtils.clamp(projected.x,-limitX,limitX);
+    projected.y=THREE.MathUtils.clamp(projected.y,-limitY,limitY);
+    sprite.position.copy(projected.unproject(camera));
   }
 }
 function resize(){if(!renderer)return;const wrap=$('#canvas-wrap'),w=wrap.clientWidth,h=wrap.clientHeight;if(!w||!h)return;renderer.setSize(w,h);camera.left=-zoomSpan*w/h;camera.right=zoomSpan*w/h;camera.top=zoomSpan;camera.bottom=-zoomSpan;camera.updateProjectionMatrix();updateLabelScales();}
@@ -103,7 +111,7 @@ $('#plate-max').onclick=()=>{
   if(busy||!loaded)return;
   try{const size=maxTileSize(Number($('#plate-width').value),Number($('#plate-depth').value));$('#rows').value=size.rows;$('#cols').value=size.cols;applyInput();}catch(error){$('#plate-error').textContent=error.message;}
 };
-$('#plate-preset').onchange=e=>{const preset=platePresets.find(p=>p[0]===e.target.value);if(preset){$('#plate-width').value=preset[2];$('#plate-depth').value=preset[3];applyPlateInput();}};
+$('#plate-preset').onchange=e=>{const preset=platePresets.find(p=>p[0]===e.target.value);if(preset){$('#plate-width').value=preset[2];$('#plate-depth').value=preset[3];}applyPlateInput();};
 $$('#plate-width,#plate-depth').forEach(input=>input.addEventListener('input',()=>{$('#plate-preset').value='custom';applyPlateInput();}));
 function applyInput(){const rows=Number($('#rows').value),cols=Number($('#cols').value);try{placements(rows,cols);$('#input-error').textContent='';state.rows=rows;state.cols=cols;saveSettings();if(loaded){assemble();fit();}$('#export').disabled=!loaded||busy;}catch(e){$('#input-error').textContent=e.message;$('#export').disabled=true;}}
 function setSizeInputLocked(locked){$$('#rows,#cols,.stepper button,[data-size],#plate-max,#settings-reset').forEach(el=>{el.disabled=locked;});$('#plate-max').disabled=locked||Boolean($('#plate-error').textContent);}
@@ -119,7 +127,7 @@ async function exportSTL(){
   $('#export-progress').hidden=false;$('#export-cancel').hidden=false;showExportProgress({value:0,stage:'準備中'});$('#export-status').textContent='';
   try{
     const result=await new Promise((resolve,reject)=>{
-      job.reject=reject;job.worker=new Worker(new URL('./export-worker.js?v=1.2.0',import.meta.url),{type:'module'});
+      job.reject=reject;job.worker=new Worker(new URL('./export-worker.js?v=1.2.1',import.meta.url),{type:'module'});
       job.worker.onmessage=({data})=>{if(activeExport!==job)return;if(data.progress)showExportProgress(data.progress);if(data.error)reject(new Error(data.error));if(data.result)resolve(data.result);};
       job.worker.onerror=e=>reject(new Error(e.message||'出力処理を開始できませんでした。'));job.worker.postMessage({sources,rows,cols});
     });
@@ -164,11 +172,11 @@ $$('[data-color]').forEach(button=>button.onclick=()=>setModelColor(button.datas
 setModelColor(state.modelColor);
 $('#color-toggle').onchange=e=>{state.color=e.target.checked;saveSettings();for(const m of meshes)m.material=state.color?materials[m.userData.type]:materials.single;};$('#explode-toggle').onchange=e=>{state.explode=e.target.checked;if(loaded){assemble();fit();}};$$('[data-view]').forEach(b=>b.onclick=()=>{if(loaded)setView(b.dataset.view);});$('#fit').onclick=()=>{if(loaded)fit();};$('#zoom-in').onclick=()=>{if(camera){camera.zoom=Math.min(10,camera.zoom*1.2);camera.updateProjectionMatrix();updateLabelScales();}};$('#zoom-out').onclick=()=>{if(camera){camera.zoom=Math.max(.2,camera.zoom/1.2);camera.updateProjectionMatrix();updateLabelScales();}};$('#export').onclick=exportSTL;
 $('#settings-reset').onclick=()=>{
-  if(busy)return;Object.assign(state,DEFAULT_SETTINGS);
-  $('#rows').value=state.rows;$('#cols').value=state.cols;$('#plate-width').value=state.plateWidth;$('#plate-depth').value=state.plateDepth;$('#plate-preset').value=state.platePreset;$('#color-toggle').checked=false;
-  setModelColor(state.modelColor);applyPlateInput();applyInput();
+  if(busy)return;Object.assign(state,DEFAULT_SETTINGS,{explode:false,view:'iso'});
+  $('#rows').value=state.rows;$('#cols').value=state.cols;$('#plate-width').value=state.plateWidth;$('#plate-depth').value=state.plateDepth;$('#plate-preset').value=state.platePreset;$('#color-toggle').checked=false;$('#explode-toggle').checked=false;
+  setModelColor(state.modelColor);applyPlateInput();applyInput();if(loaded)setView('iso');
   try{localStorage.removeItem(SETTINGS_KEY);}catch{}
 };
 try{
-  init();await Promise.all(['corner','edge','center'].map(async type=>{const res=await fetch(`./assets/${type}.stl?v=1.2.0`);if(!res.ok)throw new Error('STLを読み込めませんでした。');sources[type]=parseSTL(await res.arrayBuffer());const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(sources[type].positions,3));g.computeVertexNormals();geometries[type]=g;materials[type]=new THREE.MeshStandardMaterial({color:colors[type],roughness:.7,metalness:0,flatShading:true,side:THREE.DoubleSide});}));materials.single=new THREE.MeshStandardMaterial({color:state.modelColor,roughness:.7,flatShading:true,side:THREE.DoubleSide});loaded=true;applyInput();for(const type of ['corner','edge','center'])thumb(type);$('#loading').remove();
+  init();await Promise.all(['corner','edge','center'].map(async type=>{const res=await fetch(`./assets/${type}.stl?v=1.2.1`);if(!res.ok)throw new Error('STLを読み込めませんでした。');sources[type]=parseSTL(await res.arrayBuffer());const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(sources[type].positions,3));g.computeVertexNormals();geometries[type]=g;materials[type]=new THREE.MeshStandardMaterial({color:colors[type],roughness:.7,metalness:0,flatShading:true,side:THREE.DoubleSide});}));materials.single=new THREE.MeshStandardMaterial({color:state.modelColor,roughness:.7,flatShading:true,side:THREE.DoubleSide});loaded=true;applyInput();for(const type of ['corner','edge','center'])thumb(type);$('#loading').remove();
 }catch(e){$('#loading').textContent=`プレビューを開始できませんでした：${e.message}`;$('#model-status').textContent='読み込みエラー';console.error(e);}
