@@ -21,6 +21,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Verify settings and maximum size
+        run: node scripts/verify-settings.mjs
       - name: Verify printable geometry
         run: node scripts/verify.mjs
       - name: Verify browser interactions
@@ -32,3 +34,7 @@ jobs:
       - name: Deploy
         id: deployment
         uses: actions/deploy-pages@v4
+      - name: Verify published site
+        env:
+          TILEFORM_SITE_URL: ${{ steps.deployment.outputs.page_url }}
+        run: node scripts/verify-browser.mjs

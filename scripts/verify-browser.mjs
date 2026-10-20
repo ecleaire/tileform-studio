@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
 import {spawn,spawnSync} from 'node:child_process';
 import {mkdtempSync,rmSync,readFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
@@ -32,7 +33,8 @@ const server=createHttpServer((req,res)=>{
  }catch{res.writeHead(404);res.end();}
 });
 await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(0,'127.0.0.1',resolve);});
-const origin='http://127.0.0.1:'+server.address().port;
+const publicSite=process.env.TILEFORM_SITE_URL;
+const origin=publicSite?new URL(publicSite).href.replace(/\/$/,''):'http://127.0.0.1:'+server.address().port;
 const browser=spawn(chrome,['--headless=new','--no-sandbox','--disable-dev-shm-usage',
   '--enable-unsafe-swiftshader','--use-gl=angle','--use-angle=swiftshader',
   '--remote-allow-origins=*','--remote-debugging-port='+port,
@@ -49,7 +51,18 @@ async function poll(check,title,timeout=30000){
   throw Error('Timed out waiting for '+title);
 }
 try{
-  await poll(async()=>(await fetch(origin+'/')).ok,'local server');
+  if(publicSite){
+    await poll(async()=>{
+      const response=await fetch(origin+'/?verify='+version,{signal:AbortSignal.timeout(10000),cache:'no-store'});
+      return response.ok&&(await response.text()).includes('v'+version);
+    },'published version '+version,180000);
+    for(const file of ['app.js','core.js','settings.js','export-worker.js','solid.js','style.css','assets/corner.stl','assets/edge.stl','assets/center.stl','vendor/manifold.wasm']){
+      const response=await fetch(origin+'/'+file+'?v='+version,{signal:AbortSignal.timeout(15000),cache:'no-store'});
+      assert.equal(response.status,200,'published '+file);
+      const digest=buffer=>createHash('sha256').update(buffer).digest('hex');
+      assert.equal(digest(Buffer.from(await response.arrayBuffer())),digest(readFileSync(join(root,file))),'published content mismatch: '+file);
+    }
+  }else await poll(async()=>(await fetch(origin+'/')).ok,'local server');
   const endpoint=await poll(async()=>{
     const tabs=await (await fetch('http://127.0.0.1:'+port+'/json/list')).json();
     return tabs.find(t=>t.type==='page')?.webSocketDebuggerUrl;
@@ -77,13 +90,21 @@ try{
     if(reply.exceptionDetails)throw Error(reply.exceptionDetails.exception?.description||reply.exceptionDetails.text);
     return reply.result.value;
   };
+  const reloadReady=async title=>{
+    const before=await evaluate('performance.timeOrigin');
+    await send('Page.reload');
+    await poll(()=>evaluate(`performance.timeOrigin!==${before} && document.querySelector('#model-status')?.textContent.includes('自動配置済み') && !document.querySelector('#export')?.disabled`),title);
+  };
   inspectPage=evaluate;
   await send('Page.addScriptToEvaluateOnNewDocument',{source:`
+    const createObjectURL=URL.createObjectURL.bind(URL);
+    URL.createObjectURL=blob=>{if(blob.type==='model/stl')window.__lastExport=blob;return createObjectURL(blob);};
     window.__tileformScenes=[];window.__THREE_DEVTOOLS__=new EventTarget();
     window.__THREE_DEVTOOLS__.addEventListener('observe',event=>{if(event.detail.isScene)window.__tileformScenes.push(event.detail);});
   `});
   await send('Page.enable');
   await send('Runtime.enable');
+  if(!publicSite){
   await send('Page.navigate',{url:origin+'/warmup.html'});
   await poll(()=>evaluate("document.title==='Cache warmup'"),'cache warmup page');
   assert.equal(await evaluate("(async()=>{const urls=['corner','edge','center'].map(type=>'/assets/'+type+'.stl');for(const url of urls){const stale=await (await fetch(url)).text();if(!stale.startsWith('stale-model:'))return false;}return true;})()"),true);
@@ -91,9 +112,10 @@ try{
   // These repeat requests must hit the browser's cache, proving the fixture is warm.
   await evaluate("Promise.all(['corner','edge','center'].map(type=>fetch('/assets/'+type+'.stl').then(r=>r.text())))");
   assert.equal(assetRequests.length,3,'legacy models should remain in browser HTTP cache');
-  await send('Page.navigate',{url:origin+'/'});
+  }
+  await send('Page.navigate',{url:origin+'/?verify='+version});
   await poll(()=>evaluate("document.querySelector('#model-status')?.textContent.includes('自動配置済み') && !document.querySelector('#export')?.disabled"),'3D model initialized',45000);
-  assert.deepEqual(assetRequests.slice(3).sort(),['corner','edge','center'].map(type=>`/assets/${type}.stl?v=${version}`).sort(),'current app must bypass the warmed legacy model cache');
+  if(!publicSite)assert.deepEqual(assetRequests.slice(3).sort(),['corner','edge','center'].map(type=>`/assets/${type}.stl?v=${version}`).sort(),'current app must bypass the warmed legacy model cache');
   const initial=await evaluate("({rows:document.querySelector('#rows').value,cols:document.querySelector('#cols').value,preset:document.querySelector('[data-size].active')?.dataset.size,closed:[...document.querySelectorAll('.collapsible-section')].every(x=>!x.open)})");
   assert.deepEqual(initial,{rows:'2',cols:'4',preset:'2,4',closed:true});
   await evaluate("document.querySelector('[data-size=\"4,6\"]').click()");
@@ -140,7 +162,39 @@ try{
   assert.equal(await evaluate("getComputedStyle(document.querySelector('.studio')).order"),'-1');
   await evaluate("document.querySelectorAll('.collapsible-section')[1].open=false");
   assert.equal(await evaluate("[...document.querySelectorAll('.collapsible-section')].every(x=>!x.open)"),true);
-  console.log('Browser smoke checks passed (desktop and mobile): legacy STL cache replacement, preview wall/recess orientation, startup, presets, stepper, view, HEX, STL export');
+  // The maximum-size action follows the bed axes and obeys the application cap.
+  await evaluate("document.querySelectorAll('.collapsible-section')[0].open=true;document.querySelector('#plate-max').click()");
+  assert.equal(await evaluate("document.querySelector('#project-name').textContent"),'Tile_22×22');
+  await evaluate("document.querySelector('#plate-preset').value='prusa-mk4s';document.querySelector('#plate-preset').dispatchEvent(new Event('change'));document.querySelector('#plate-max').click()");
+  assert.equal(await evaluate("document.querySelector('#project-name').textContent"),'Tile_26×31');
+  await evaluate("{const el=document.querySelector('#plate-width');el.value='';el.dispatchEvent(new Event('input'));}");
+  assert.equal(await evaluate("document.querySelector('#plate-max').disabled"),true);
+  // Save a manageable model plus custom, decimal bed dimensions and color settings.
+  await evaluate("document.querySelector('[data-size=\"4,6\"]').click();for(const [id,value] of [['plate-width','179.5'],['plate-depth','120']]){const el=document.querySelector('#'+id);el.value=value;el.dispatchEvent(new Event('input'));}document.querySelector('#color-toggle').checked=true;document.querySelector('#color-toggle').dispatchEvent(new Event('change'));");
+  await reloadReady('restored settings');
+  assert.deepEqual(await evaluate("({rows:document.querySelector('#rows').value,cols:document.querySelector('#cols').value,width:document.querySelector('#plate-width').value,depth:document.querySelector('#plate-depth').value,preset:document.querySelector('#plate-preset').value,color:document.querySelector('#model-color').value,parts:document.querySelector('#color-toggle').checked})"),{rows:'4',cols:'6',width:'179.5',depth:'120',preset:'custom',color:'#123456',parts:true});
+  // A genuinely running large union can be terminated, without producing an STL.
+  await evaluate("window.__lastExport=null;for(const id of ['rows','cols']){const el=document.querySelector('#'+id);el.value='32';el.dispatchEvent(new Event('input'));}document.querySelector('#export').click()");
+  await poll(()=>evaluate("document.querySelector('#export-progressbar').value>=.45 && !document.querySelector('#export-cancel').hidden"),'union progress',60000);
+  await evaluate("document.querySelector('#export-cancel').click()");
+  await poll(()=>evaluate("document.querySelector('#export-status').textContent.includes('キャンセル') && !document.querySelector('#export').disabled"),'cancelled worker',5000);
+  assert.equal(await evaluate("window.__lastExport==null && !document.querySelector('#rows').disabled && document.querySelector('#export-cancel').hidden"),true);
+  await evaluate("document.querySelector('[data-size=\"2,4\"]').click();document.querySelector('#export').click()");
+  await poll(()=>evaluate("document.querySelector('#export-status').textContent.includes('保存しました')"),'export after cancellation',90000);
+  assert.equal(await evaluate("document.querySelector('#export-progressbar').value"),1);
+  const output=await evaluate("(async()=>{const buffer=await window.__lastExport.arrayBuffer(),view=new DataView(buffer),n=view.getUint32(80,true),min=[Infinity,Infinity,Infinity],max=[-Infinity,-Infinity,-Infinity];for(let i=0;i<n;i++)for(let j=0;j<9;j++){const x=view.getFloat32(84+i*50+12+j*4,true),axis=j%3;min[axis]=Math.min(min[axis],x);max[axis]=Math.max(max[axis],x);}return {valid:buffer.byteLength===84+50*n,n,size:max.map((v,i)=>Math.round((v-min[i])*100)/100)};})()");
+  assert.ok(output.valid&&output.n>0);assert.deepEqual(output.size,[32,16,3.12]);
+  await evaluate("document.querySelector('#settings-reset').click()");
+  assert.equal(await evaluate("document.querySelector('#project-name').textContent"),'Tile_2×4');
+  assert.equal(await evaluate("document.querySelector('#plate-preset').value"),'a1-mini');
+  assert.equal(await evaluate("document.querySelector('#model-color').value"),'#d3d5d8');
+  await evaluate("localStorage.setItem('tileform.settings.v1','broken JSON')");
+  await reloadReady('corrupt settings fallback');
+  assert.equal(await evaluate("document.querySelector('#project-name').textContent"),'Tile_2×4');
+  await send('Page.addScriptToEvaluateOnNewDocument',{source:"Object.defineProperty(window,'localStorage',{get(){throw new DOMException('Storage disabled','SecurityError');}});"});
+  await reloadReady('disabled storage fallback');
+  assert.equal(await evaluate("document.querySelector('#project-name').textContent"),'Tile_2×4');
+  console.log('Browser smoke checks passed (desktop and mobile): asset version consistency, preview orientation, startup, presets, maximum size, persisted settings, unavailable storage, progress, cancellation and restart, binary STL export');
 }catch(error){
   console.error('Browser test failed:',error?.stack||error);
   if(inspectPage){

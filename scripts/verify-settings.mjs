@@ -1,0 +1,13 @@
+import assert from 'node:assert/strict';
+import {DEFAULT_SETTINGS,SETTINGS_KEY,readSettings,writeSettings} from '../dist/settings.js';
+import {maxTileSize} from '../dist/core.js';
+let value=null;const storage={getItem:()=>value,setItem:(key,input)=>{assert.equal(key,SETTINGS_KEY);value=input;}};
+assert.deepEqual(readSettings(storage),DEFAULT_SETTINGS);
+const state={...DEFAULT_SETTINGS,rows:6,cols:4,plateWidth:179.5,plateDepth:120,platePreset:'custom',modelColor:'#123456',color:true,explode:true};
+assert.equal(writeSettings(storage,state),true);assert.deepEqual(readSettings(storage),Object.fromEntries(Object.keys(DEFAULT_SETTINGS).map(key=>[key,state[key]])));
+value='bad JSON';assert.deepEqual(readSettings(storage),DEFAULT_SETTINGS);
+value=JSON.stringify({version:1,settings:{rows:33,cols:2.5,plateWidth:Infinity,plateDepth:-1,modelColor:'<script>',color:'false'}});assert.deepEqual(readSettings(storage),DEFAULT_SETTINGS);
+const blocked={getItem(){throw Error('blocked');},setItem(){throw Error('blocked');}};assert.deepEqual(readSettings(blocked),DEFAULT_SETTINGS);assert.equal(writeSettings(blocked,state),false);
+assert.deepEqual(maxTileSize(180,180),{rows:22,cols:22});assert.deepEqual(maxTileSize(250,210),{rows:26,cols:31});assert.deepEqual(maxTileSize(179.5,16),{rows:2,cols:22});assert.deepEqual(maxTileSize(1000,1000),{rows:32,cols:32});
+for(const [w,h] of [[0,180],[15.9,180],[1001,180],[NaN,180],[180,Infinity]])assert.throws(()=>maxTileSize(w,h));
+console.log('Settings and maximum-size checks passed.');
