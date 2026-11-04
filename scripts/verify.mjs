@@ -3,7 +3,13 @@ import assert from 'node:assert/strict';
 import {placements,parseSTL,indexedMesh,stepSize} from '../dist/core.js';
 import {unite} from '../dist/solid.js';
 const sources={};
-for(const t of ['corner','edge','center']){const b=fs.readFileSync(`dist/assets/${t}.stl`);sources[t]=parseSTL(b.buffer.slice(b.byteOffset,b.byteOffset+b.byteLength));assert.deepEqual(sources[t].size.map(v=>Math.round(v*100)/100),[8,8,t==='center'?3.15:3.12]);}
+const sourceTriangleCounts={corner:316,edge:528,center:1004};
+for(const t of ['corner','edge','center']){
+ const b=fs.readFileSync(`dist/assets/${t}.stl`);
+ sources[t]=parseSTL(b.buffer.slice(b.byteOffset,b.byteOffset+b.byteLength));
+ assert.equal(sources[t].triangles,sourceTriangleCounts[t],`${t}: expected v2 source model`);
+ assert.deepEqual(sources[t].size.map(v=>Math.round(v*100)/100),[8,8,t==='center'?3.15:3.12]);
+}
 // Sample the actual raised structure; a side is closed only if its wall is continuous.
 // Also check inward-facing corner recesses, not just total boundary triangle area.
 const directions=[[1,0],[-1,0],[0,1],[0,-1]],closedWalls={},heightCache=new Map();

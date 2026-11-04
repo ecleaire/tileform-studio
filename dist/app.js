@@ -1,10 +1,10 @@
 import * as THREE from 'three';
 import {OrbitControls} from './vendor/OrbitControls.js';
-import {placements,parseSTL,PITCH,HEIGHT,stepSize,maxTileSize} from './core.js?v=1.2.1';
-import {DEFAULT_SETTINGS,SETTINGS_KEY,readSettings,writeSettings} from './settings.js?v=1.2.1';
+import {placements,parseSTL,PITCH,HEIGHT,stepSize,maxTileSize} from './core.js?v=1.3.0';
+import {DEFAULT_SETTINGS,SETTINGS_KEY,readSettings,writeSettings} from './settings.js?v=1.3.0';
 const $=s=>document.querySelector(s),$$=s=>document.querySelectorAll(s);
 let restored;try{restored=readSettings(localStorage);}catch{restored={...DEFAULT_SETTINGS};}
-const state={...restored,explode:false,view:'iso'},sources={},geometries={},materials={},meshes=[];
+const state={...restored,explode:false,view:'iso'},sources={},geometries={},outlines={},materials={},meshes=[];
 const platePresets=[
   ['a1-mini','Bambu Lab A1 mini',180,180],
   ['bambu-256','Bambu Lab A1 / P1S / X1C',256,256],
@@ -15,6 +15,7 @@ const platePresets=[
   ['neptune-4','ELEGOO Neptune 4',225,225]
 ];
 const colors={corner:0xe5bc5d,edge:0xacc1ae,center:0xd78d6b};
+const outlineMaterial=new THREE.LineBasicMaterial({color:0x40513d,transparent:true,opacity:.28,depthWrite:false});
 let scene,camera,renderer,controls,group,dimensions,plate,zoomSpan=40,activeExport,loaded=false,busy=false;
 function saveSettings(){
   let saved=false;try{saved=writeSettings(localStorage,state);}catch{}
@@ -66,7 +67,7 @@ function dimensionLines(){clear(dimensions);const w=state.cols*8,h=state.rows*8,
   const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(pts,3));const l=new THREE.LineSegments(g,new THREE.LineBasicMaterial({color:0xa7b29b,transparent:true,opacity:.8}));l.userData.owned=true;dimensions.add(l);label(`${state.cols}マス, ${w} mm`,new THREE.Vector3(0,y,0));label(`${state.rows}マス, ${h} mm`,new THREE.Vector3(x+3,0,0),'right');}
 function assemble(){
   clear(group);meshes.length=0;const parts=placements(state.rows,state.cols),gap=state.explode?2.4:0;
-  for(const p of parts){const m=new THREE.Mesh(geometries[p.type],state.color?materials[p.type]:materials.single);m.rotation.z=p.q*Math.PI/2;m.position.set((p.c-(state.cols-1)/2)*(8+gap),((state.rows-1)/2-p.r)*(8+gap),0);m.userData.type=p.type;group.add(m);meshes.push(m);}
+  for(const p of parts){const m=new THREE.Mesh(geometries[p.type],state.color?materials[p.type]:materials.single);m.rotation.z=p.q*Math.PI/2;m.position.set((p.c-(state.cols-1)/2)*(8+gap),((state.rows-1)/2-p.r)*(8+gap),0);m.userData.type=p.type;m.add(new THREE.LineSegments(outlines[p.type],outlineMaterial));group.add(m);meshes.push(m);}
   dimensionLines();$('#project-name').textContent=`Tile_${state.rows}×${state.cols}`;$('#size-mm').innerHTML=`<span>横 ${state.cols}マス, ${state.cols*PITCH} mm</span><span>縦 ${state.rows}マス, ${state.rows*PITCH} mm</span>`;$('#size-note').textContent=`横 × 縦 · 厚さ ${state.rows>2&&state.cols>2?'3.15':'3.12'} mm`;$('#total').textContent=parts.length;for(const type of ['corner','edge','center'])$(`#count-${type}`).textContent=parts.filter(p=>p.type===type).length;$('#model-status').textContent=`${state.rows} × ${state.cols} · 自動配置済み`;
   updatePlateStatus();
   $$('[data-size]').forEach(b=>b.classList.toggle('active',b.dataset.size===`${state.rows},${state.cols}`));
@@ -127,7 +128,7 @@ async function exportSTL(){
   $('#export-progress').hidden=false;$('#export-cancel').hidden=false;showExportProgress({value:0,stage:'準備中'});$('#export-status').textContent='';
   try{
     const result=await new Promise((resolve,reject)=>{
-      job.reject=reject;job.worker=new Worker(new URL('./export-worker.js?v=1.2.1',import.meta.url),{type:'module'});
+      job.reject=reject;job.worker=new Worker(new URL('./export-worker.js?v=1.3.0',import.meta.url),{type:'module'});
       job.worker.onmessage=({data})=>{if(activeExport!==job)return;if(data.progress)showExportProgress(data.progress);if(data.error)reject(new Error(data.error));if(data.result)resolve(data.result);};
       job.worker.onerror=e=>reject(new Error(e.message||'出力処理を開始できませんでした。'));job.worker.postMessage({sources,rows,cols});
     });
@@ -178,5 +179,5 @@ $('#settings-reset').onclick=()=>{
   try{localStorage.removeItem(SETTINGS_KEY);}catch{}
 };
 try{
-  init();await Promise.all(['corner','edge','center'].map(async type=>{const res=await fetch(`./assets/${type}.stl?v=1.2.1`);if(!res.ok)throw new Error('STLを読み込めませんでした。');sources[type]=parseSTL(await res.arrayBuffer());const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(sources[type].positions,3));g.computeVertexNormals();geometries[type]=g;materials[type]=new THREE.MeshStandardMaterial({color:colors[type],roughness:.7,metalness:0,flatShading:true,side:THREE.DoubleSide});}));materials.single=new THREE.MeshStandardMaterial({color:state.modelColor,roughness:.7,flatShading:true,side:THREE.DoubleSide});loaded=true;applyInput();for(const type of ['corner','edge','center'])thumb(type);$('#loading').remove();
+  init();await Promise.all(['corner','edge','center'].map(async type=>{const res=await fetch(`./assets/${type}.stl?v=1.3.0`);if(!res.ok)throw new Error('STLを読み込めませんでした。');sources[type]=parseSTL(await res.arrayBuffer());const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(sources[type].positions,3));g.computeVertexNormals();geometries[type]=g;outlines[type]=new THREE.EdgesGeometry(g,30);materials[type]=new THREE.MeshStandardMaterial({color:colors[type],roughness:.7,metalness:0,flatShading:true,side:THREE.DoubleSide});}));materials.single=new THREE.MeshStandardMaterial({color:state.modelColor,roughness:.7,flatShading:true,side:THREE.DoubleSide});loaded=true;applyInput();for(const type of ['corner','edge','center'])thumb(type);$('#loading').remove();
 }catch(e){$('#loading').textContent=`プレビューを開始できませんでした：${e.message}`;$('#model-status').textContent='読み込みエラー';console.error(e);}
