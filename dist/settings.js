@@ -1,5 +1,5 @@
 export const SETTINGS_KEY='tileform.settings.v1';
-export const DEFAULT_SETTINGS=Object.freeze({rows:2,cols:4,color:false,modelColor:'#adb4bc',plateWidth:180,plateDepth:180,platePreset:'a1-mini',modelVersion:'v3'});
+export const DEFAULT_SETTINGS=Object.freeze({rows:2,cols:4,color:false,modelColor:'#adb4bc',plateWidth:180,plateDepth:180,platePreset:'a1-mini',modelVersion:'v3',relief:true});
 export function readSettings(storage){
  try{
   const saved=JSON.parse(storage.getItem(SETTINGS_KEY));
@@ -8,6 +8,7 @@ export function readSettings(storage){
   for(const key of ['rows','cols'])if(Number.isInteger(input[key])&&input[key]>=2&&input[key]<=32)result[key]=input[key];
   for(const key of ['plateWidth','plateDepth'])if(Number.isFinite(input[key])&&input[key]>=16&&input[key]<=1000)result[key]=input[key];
   if(typeof input.color==='boolean')result.color=input.color;
+  if(typeof input.relief==='boolean')result.relief=input.relief;
   if(typeof input.modelColor==='string'&&/^#[0-9a-f]{6}$/i.test(input.modelColor))result.modelColor=input.modelColor.toLowerCase()==='#d3d5d8'?DEFAULT_SETTINGS.modelColor:input.modelColor.toLowerCase();
   if(typeof input.platePreset==='string')result.platePreset=input.platePreset;
   if(['v2','v3'].includes(input.modelVersion))result.modelVersion=input.modelVersion;

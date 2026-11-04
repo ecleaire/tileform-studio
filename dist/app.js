@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import {OrbitControls} from './vendor/OrbitControls.js';
-import {placements,parseSTL,PITCH,HEIGHT,stepSize,maxTileSize,tileSpan} from './core.js?v=1.4.2';
-import {DEFAULT_SETTINGS,SETTINGS_KEY,readSettings,writeSettings} from './settings.js?v=1.4.2';
+import {placements,parseSTL,PITCH,HEIGHT,stepSize,maxTileSize,tileSpan} from './core.js?v=1.5.0';
+import {DEFAULT_SETTINGS,SETTINGS_KEY,readSettings,writeSettings} from './settings.js?v=1.5.0';
 const $=s=>document.querySelector(s),$$=s=>document.querySelectorAll(s);
 let restored;try{restored=readSettings(localStorage);}catch{restored={...DEFAULT_SETTINGS};}
 const state={...restored,explode:false,view:'iso'},sources={},geometries={},outlines={},materials={},meshes=[];
@@ -36,8 +36,8 @@ function updateLabelScales(){
   if(!camera||!dimensions)return;
   const wrap=$('#canvas-wrap'),height=wrap.clientHeight,viewportWidth=wrap.clientWidth;
   if(!height||!viewportWidth)return;
-  const pixelWidth=Math.max(1,Math.min(180,viewportWidth<600?(viewportWidth-32)/2:viewportWidth-16));
-  const unit=2*zoomSpan/(height*camera.zoom),width=pixelWidth*unit,labelHeight=30*unit;
+  const pixelWidth=Math.max(1,Math.min(210,viewportWidth<600?(viewportWidth-32)/2:viewportWidth-16));
+  const unit=2*zoomSpan/(height*camera.zoom),width=pixelWidth*unit,labelHeight=34*unit;
   camera.updateMatrixWorld();
   for(const sprite of dimensions.children.filter(c=>c.isSprite)){
     sprite.scale.set(width,labelHeight,1);
@@ -77,7 +77,7 @@ function fit(){
 }
 
 function clear(g){while(g.children.length){const c=g.children[0];g.remove(c);if(c.userData.owned){c.geometry?.dispose();c.material?.map?.dispose();c.material?.dispose();}}}
-function label(text,position,side){const c=document.createElement('canvas');c.width=512;c.height=88;const x=c.getContext('2d');x.font='700 46px "Space Grotesk", sans-serif';x.textAlign='center';x.textBaseline='middle';x.fillStyle='#fffefa';x.fillRect(0,13,512,62);x.fillStyle='#46523e';x.fillText(text,256,46,492);const tex=new THREE.CanvasTexture(c);tex.colorSpace=THREE.SRGBColorSpace;const s=new THREE.Sprite(new THREE.SpriteMaterial({map:tex,depthTest:false,transparent:true,toneMapped:false}));s.position.copy(position);const labelWidth=Math.max(24,Math.max(state.plateWidth,state.plateDepth)*.18);s.scale.set(labelWidth,labelWidth*88/512,1);s.userData.owned=true;s.userData.anchor=position.clone();s.userData.side=side;dimensions.add(s);updateLabelScales();}
+function label(text,position,side){const c=document.createElement('canvas');c.width=512;c.height=88;const x=c.getContext('2d');x.font='700 48px "Space Grotesk", sans-serif';x.textAlign='center';x.textBaseline='middle';x.fillStyle='#fffefa';x.fillRect(0,13,512,62);x.fillStyle='#46523e';x.fillText(text,256,46,492);const tex=new THREE.CanvasTexture(c);tex.colorSpace=THREE.SRGBColorSpace;const s=new THREE.Sprite(new THREE.SpriteMaterial({map:tex,depthTest:false,transparent:true,toneMapped:false}));s.position.copy(position);const labelWidth=Math.max(24,Math.max(state.plateWidth,state.plateDepth)*.18);s.scale.set(labelWidth,labelWidth*88/512,1);s.userData.owned=true;s.userData.anchor=position.clone();s.userData.side=side;dimensions.add(s);updateLabelScales();}
 function dimensionLines(){clear(dimensions);const w=span(state.cols),h=span(state.rows),pts=[];const add=(a,b)=>pts.push(...a,...b);const gap=state.explode?3:0,x=w/2+7+state.cols*gap/2,y=-h/2-7-state.rows*gap/2;
   add([-w/2,y,0],[w/2,y,0]);add([-w/2,y-1,0],[-w/2,y+1,0]);add([w/2,y-1,0],[w/2,y+1,0]);add([x,-h/2,0],[x,h/2,0]);add([x-1,-h/2,0],[x+1,-h/2,0]);add([x-1,h/2,0],[x+1,h/2,0]);
   const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(pts,3));const l=new THREE.LineSegments(g,new THREE.LineBasicMaterial({color:0x526149,transparent:true,opacity:.95}));l.userData.owned=true;dimensions.add(l);label(`横 ${state.cols}マス, ${w} mm`,new THREE.Vector3(0,y,0));label(`縦 ${state.rows}マス, ${h} mm`,new THREE.Vector3(x+3,0,0),'right');}
@@ -89,8 +89,24 @@ function assemble(){
   $$('[data-size]').forEach(b=>b.classList.toggle('active',b.dataset.size===`${state.rows},${state.cols}`));
 }
 function thumb(type){const el=$(`#thumb-${type}`),r=new THREE.WebGLRenderer({antialias:true,alpha:true});r.setSize(el.clientWidth||60,el.clientHeight||65);r.setPixelRatio(Math.min(devicePixelRatio,2));r.setClearColor(0,0);r.toneMapping=THREE.ACESFilmicToneMapping;const s=new THREE.Scene();lighting(s);const c=new THREE.OrthographicCamera(-6.5,6.5,7,-7,.1,100);c.up.set(0,0,1);c.position.set(12,-17,25);c.lookAt(0,0,1);const m=new THREE.Mesh(geometries[type],materials[type]);s.add(m);r.render(s,c);const img=document.createElement('img');img.src=r.domElement.toDataURL();img.alt=`${{corner:'角',edge:'端',center:'中'}[type]}パーツの形状`;img.style.cssText='width:100%;height:100%;object-fit:contain';el.replaceChildren(img);r.dispose();}
+function addReliefColors(geometry){
+  const positions=geometry.getAttribute('position'),normals=geometry.getAttribute('normal'),colors=new Float32Array(positions.count*3);
+  for(let i=0;i<positions.count;i++){
+    const height=Math.max(0,Math.min(1,(positions.getZ(i)-.8)/(HEIGHT-.8)));
+    const shade=normals.getZ(i)<-.5?1:.55+.45*height;
+    colors.set([shade,shade,shade],i*3);
+  }
+  geometry.setAttribute('color',new THREE.BufferAttribute(colors,3));
+}
+function setRelief(enabled){
+  state.relief=enabled;$('#relief-toggle').checked=enabled;saveSettings();
+  for(const material of Object.values(materials)){material.vertexColors=enabled;material.needsUpdate=true;}
+  if(loaded)for(const type of ['corner','edge','center'])thumb(type);
+}
+$('#relief-toggle').onchange=e=>setRelief(e.target.checked);
 function activateModel(){
-  Object.assign(sources,sourceSets[state.modelVersion]);Object.assign(geometries,geometrySets[state.modelVersion]);Object.assign(outlines,outlineSets[state.modelVersion]);
+  // Keep source ordering stable regardless of network completion order.
+  for(const type of ['corner','edge','center']){sources[type]=sourceSets[state.modelVersion][type];geometries[type]=geometrySets[state.modelVersion][type];outlines[type]=outlineSets[state.modelVersion][type];}
   for(const type of ['corner','edge','center']){thumb(type);$('#thumb-'+type).parentElement.querySelector('.part-source').textContent=({corner:'角',edge:'端',center:'中'})[type]+(type==='center'?'v2':type==='corner'&&state.modelVersion==='v3'?'v3.1':state.modelVersion)+'.stl';}
 }
 function updateModelSelection(){
@@ -136,7 +152,7 @@ const customOption=document.createElement('option');customOption.value='custom';
 const restoredPreset=platePresets.find(p=>p[0]===state.platePreset&&p[2]===state.plateWidth&&p[3]===state.plateDepth);
 state.platePreset=restoredPreset?restoredPreset[0]:'custom';
 $('#plate-preset').value=state.platePreset;$('#plate-width').value=state.plateWidth;$('#plate-depth').value=state.plateDepth;
-$('#rows').value=state.rows;$('#cols').value=state.cols;$('#color-toggle').checked=state.color;
+$('#rows').value=state.rows;$('#cols').value=state.cols;$('#color-toggle').checked=state.color;$('#relief-toggle').checked=state.relief;
 $('#plate-max').onclick=()=>{
   if(busy||!loaded)return;
   try{const size=maxTileSize(Number($('#plate-width').value),Number($('#plate-depth').value),state.modelVersion);$('#rows').value=size.rows;$('#cols').value=size.cols;applyInput();}catch(error){$('#plate-error').textContent=error.message;}
@@ -157,7 +173,7 @@ async function exportSTL(){
   $('#export-progress').hidden=false;$('#export-cancel').hidden=false;showExportProgress({value:0,stage:'準備中'});$('#export-status').textContent='';
   try{
     const result=await new Promise((resolve,reject)=>{
-      job.reject=reject;job.worker=new Worker(new URL('./export-worker.js?v=1.4.2',import.meta.url),{type:'module'});
+      job.reject=reject;job.worker=new Worker(new URL('./export-worker.js?v=1.5.0',import.meta.url),{type:'module'});
       job.worker.onmessage=({data})=>{if(activeExport!==job)return;if(data.progress)showExportProgress(data.progress);if(data.error)reject(new Error(data.error));if(data.result)resolve(data.result);};
       job.worker.onerror=e=>reject(new Error(e.message||'出力処理を開始できませんでした。'));job.worker.postMessage({sources,rows,cols,modelVersion});
     });
@@ -204,17 +220,17 @@ $('#color-toggle').onchange=e=>{state.color=e.target.checked;saveSettings();for(
 $('#settings-reset').onclick=()=>{
   if(busy)return;Object.assign(state,DEFAULT_SETTINGS,{explode:false,view:'iso'});
   $('#rows').value=state.rows;$('#cols').value=state.cols;$('#plate-width').value=state.plateWidth;$('#plate-depth').value=state.plateDepth;$('#plate-preset').value=state.platePreset;$('#color-toggle').checked=false;$('#explode-toggle').checked=false;
-  updateModelSelection();if(loaded)activateModel();setModelColor(state.modelColor);applyPlateInput();applyInput();if(loaded)setView('iso');
+  updateModelSelection();setRelief(state.relief);if(loaded)activateModel();setModelColor(state.modelColor);applyPlateInput();applyInput();if(loaded)setView('iso');
   try{localStorage.removeItem(SETTINGS_KEY);}catch{}
 };
 try{
   init();await Promise.all(['v3','v2'].flatMap(version=>['corner','edge','center'].filter(type=>version==='v3'||type!=='center').map(async type=>{
     const path=version==='v2'?'./assets/v2/':'./assets/';
-    const res=await fetch(path+type+'.stl?v=1.4.2');if(!res.ok)throw new Error('STLを読み込めませんでした。');
-    const source=parseSTL(await res.arrayBuffer(),type),g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(source.positions,3));g.computeVertexNormals();
+    const res=await fetch(path+type+'.stl?v=1.5.0');if(!res.ok)throw new Error('STLを読み込めませんでした。');
+    const source=parseSTL(await res.arrayBuffer(),type),g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(source.positions,3));g.computeVertexNormals();addReliefColors(g);
     sourceSets[version][type]=source;geometrySets[version][type]=g;outlineSets[version][type]=new THREE.EdgesGeometry(g,30);
   })));
   sourceSets.v2.center=sourceSets.v3.center;geometrySets.v2.center=geometrySets.v3.center;outlineSets.v2.center=outlineSets.v3.center;
-  for(const type of ['corner','edge','center'])materials[type]=new THREE.MeshStandardMaterial({color:colors[type],roughness:.7,metalness:0,flatShading:true,side:THREE.DoubleSide});
-  materials.single=new THREE.MeshStandardMaterial({color:state.modelColor,roughness:.7,flatShading:true,side:THREE.DoubleSide});loaded=true;activateModel();applyInput();$('#loading').remove();
+  for(const type of ['corner','edge','center'])materials[type]=new THREE.MeshStandardMaterial({color:colors[type],roughness:.7,metalness:0,vertexColors:state.relief,flatShading:true,side:THREE.DoubleSide});
+  materials.single=new THREE.MeshStandardMaterial({color:state.modelColor,roughness:.7,vertexColors:state.relief,flatShading:true,side:THREE.DoubleSide});loaded=true;activateModel();applyInput();$('#loading').remove();
 }catch(e){$('#loading').textContent=`プレビューを開始できませんでした：${e.message}`;$('#model-status').textContent='読み込みエラー';console.error(e);}

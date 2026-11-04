@@ -1,5 +1,5 @@
 import Module from './vendor/manifold.js';
-import {indexedMesh,placements,binarySTL,HEIGHT,modelInset,tileSpan} from './core.js?v=1.4.2';
+import {indexedMesh,placements,binarySTL,HEIGHT,modelInset,tileSpan} from './core.js?v=1.5.0';
 let ready;
 export async function engine(){if(!ready)ready=Module().then(m=>{m.setup();return m});return ready;}
 export async function unite(sources,rows,cols,onProgress=()=>{},version='v3'){
