@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import {OrbitControls} from './vendor/OrbitControls.js';
-import {placements,parseSTL,PITCH,HEIGHT,stepSize,maxTileSize,tileSpan} from './core.js?v=1.4.0';
-import {DEFAULT_SETTINGS,SETTINGS_KEY,readSettings,writeSettings} from './settings.js?v=1.4.0';
+import {placements,parseSTL,PITCH,HEIGHT,stepSize,maxTileSize,tileSpan} from './core.js?v=1.4.1';
+import {DEFAULT_SETTINGS,SETTINGS_KEY,readSettings,writeSettings} from './settings.js?v=1.4.1';
 const $=s=>document.querySelector(s),$$=s=>document.querySelectorAll(s);
 let restored;try{restored=readSettings(localStorage);}catch{restored={...DEFAULT_SETTINGS};}
 const state={...restored,explode:false,view:'iso'},sources={},geometries={},outlines={},materials={},meshes=[];
@@ -17,7 +17,7 @@ const platePresets=[
   ['neptune-4','ELEGOO Neptune 4',225,225]
 ];
 const colors={corner:0xe5bc5d,edge:0xacc1ae,center:0xd78d6b};
-const outlineMaterial=new THREE.LineBasicMaterial({color:0x40513d,transparent:true,opacity:.28,depthWrite:false});
+const outlineMaterial=new THREE.LineBasicMaterial({color:0x3c4650,transparent:true,opacity:.38,depthWrite:false});
 let scene,camera,renderer,controls,group,dimensions,plate,zoomSpan=40,activeExport,loaded=false,busy=false;
 function saveSettings(){
   let saved=false;try{saved=writeSettings(localStorage,state);}catch{}
@@ -36,8 +36,8 @@ function updateLabelScales(){
   if(!camera||!dimensions)return;
   const wrap=$('#canvas-wrap'),height=wrap.clientHeight,viewportWidth=wrap.clientWidth;
   if(!height||!viewportWidth)return;
-  const pixelWidth=Math.max(1,Math.min(140,viewportWidth-16));
-  const unit=2*zoomSpan/(height*camera.zoom),width=pixelWidth*unit,labelHeight=24*unit;
+  const pixelWidth=Math.max(1,Math.min(180,viewportWidth-16));
+  const unit=2*zoomSpan/(height*camera.zoom),width=pixelWidth*unit,labelHeight=30*unit;
   camera.updateMatrixWorld();
   for(const sprite of dimensions.children.filter(c=>c.isSprite)){
     sprite.scale.set(width,labelHeight,1);
@@ -63,10 +63,10 @@ function fit(){
   zoomSpan=Math.max(radius,radius*wrap.clientHeight/wrap.clientWidth);camera.zoom=1;resize();controls.target.set(0,0,1);controls.update();
 }
 function clear(g){while(g.children.length){const c=g.children[0];g.remove(c);if(c.userData.owned){c.geometry?.dispose();c.material?.map?.dispose();c.material?.dispose();}}}
-function label(text,position,side){const c=document.createElement('canvas');c.width=512;c.height=88;const x=c.getContext('2d');x.font='500 42px "Space Grotesk", sans-serif';x.textAlign='center';x.textBaseline='middle';x.fillStyle='#f4f6ee';x.fillRect(0,13,512,62);x.fillStyle='#859375';x.fillText(text,256,46,492);const tex=new THREE.CanvasTexture(c);tex.colorSpace=THREE.SRGBColorSpace;const s=new THREE.Sprite(new THREE.SpriteMaterial({map:tex,depthTest:false,transparent:true,toneMapped:false}));s.position.copy(position);const labelWidth=Math.max(24,Math.max(state.plateWidth,state.plateDepth)*.18);s.scale.set(labelWidth,labelWidth*88/512,1);s.userData.owned=true;s.userData.anchor=position.clone();s.userData.side=side;dimensions.add(s);updateLabelScales();}
+function label(text,position,side){const c=document.createElement('canvas');c.width=512;c.height=88;const x=c.getContext('2d');x.font='500 46px "Space Grotesk", sans-serif';x.textAlign='center';x.textBaseline='middle';x.fillStyle='#fffefa';x.fillRect(0,13,512,62);x.fillStyle='#46523e';x.fillText(text,256,46,492);const tex=new THREE.CanvasTexture(c);tex.colorSpace=THREE.SRGBColorSpace;const s=new THREE.Sprite(new THREE.SpriteMaterial({map:tex,depthTest:false,transparent:true,toneMapped:false}));s.position.copy(position);const labelWidth=Math.max(24,Math.max(state.plateWidth,state.plateDepth)*.18);s.scale.set(labelWidth,labelWidth*88/512,1);s.userData.owned=true;s.userData.anchor=position.clone();s.userData.side=side;dimensions.add(s);updateLabelScales();}
 function dimensionLines(){clear(dimensions);const w=span(state.cols),h=span(state.rows),pts=[];const add=(a,b)=>pts.push(...a,...b);const gap=state.explode?3:0,x=w/2+7+state.cols*gap/2,y=-h/2-7-state.rows*gap/2;
   add([-w/2,y,0],[w/2,y,0]);add([-w/2,y-1,0],[-w/2,y+1,0]);add([w/2,y-1,0],[w/2,y+1,0]);add([x,-h/2,0],[x,h/2,0]);add([x-1,-h/2,0],[x+1,-h/2,0]);add([x-1,h/2,0],[x+1,h/2,0]);
-  const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(pts,3));const l=new THREE.LineSegments(g,new THREE.LineBasicMaterial({color:0xa7b29b,transparent:true,opacity:.8}));l.userData.owned=true;dimensions.add(l);label(`${state.cols}マス, ${w} mm`,new THREE.Vector3(0,y,0));label(`${state.rows}マス, ${h} mm`,new THREE.Vector3(x+3,0,0),'right');}
+  const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(pts,3));const l=new THREE.LineSegments(g,new THREE.LineBasicMaterial({color:0x78876b,transparent:true,opacity:.9}));l.userData.owned=true;dimensions.add(l);label(`${state.cols}マス, ${w} mm`,new THREE.Vector3(0,y,0));label(`${state.rows}マス, ${h} mm`,new THREE.Vector3(x+3,0,0),'right');}
 function assemble(){
   clear(group);meshes.length=0;const parts=placements(state.rows,state.cols),gap=state.explode?2.4:0;
   for(const p of parts){const m=new THREE.Mesh(geometries[p.type],state.color?materials[p.type]:materials.single);m.rotation.z=p.q*Math.PI/2;m.position.set((p.c-(state.cols-1)/2)*(8+gap),((state.rows-1)/2-p.r)*(8+gap),0);m.userData.type=p.type;m.add(new THREE.LineSegments(outlines[p.type],outlineMaterial));group.add(m);meshes.push(m);}
@@ -89,8 +89,8 @@ $('#model-version').onchange=()=>{
   if(loaded){activateModel();applyInput();}
 };
 function updatePlateStatus(){
-  const cols=Math.floor(state.plateWidth/PITCH),rows=Math.floor(state.plateDepth/PITCH);
-  $('#plate-capacity').textContent=`${cols} × ${rows}マス / ${cols*PITCH} × ${rows*PITCH} mm`;
+  const {cols,rows}=maxTileSize(state.plateWidth,state.plateDepth,state.modelVersion);
+  $('#plate-capacity').textContent=`最大 ${cols} × ${rows}マス / 実寸 ${span(cols)} × ${span(rows)} mm（${state.modelVersion}）`;
   const outside=span(state.cols)>state.plateWidth||span(state.rows)>state.plateDepth;
   $('#plate-status').textContent=outside?'タイルが造形範囲を超えています。サイズか造形範囲を見直してください。':'タイルは造形範囲内です。';
   $('#plate-status').classList.toggle('outside',outside);
@@ -104,7 +104,7 @@ function updatePlate(){
   for(let x=-gw/2;x<=gw/2;x+=PITCH)points.push(x,-gh/2,-.12,x,gh/2,-.12);
   for(let y=-gh/2;y<=gh/2;y+=PITCH)points.push(-gw/2,y,-.12,gw/2,y,-.12);
   const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.Float32BufferAttribute(points,3));
-  const grid=new THREE.LineSegments(geometry,new THREE.LineBasicMaterial({color:0xa9b79b,transparent:true,opacity:.55}));grid.userData.owned=true;plate.add(grid);
+  const grid=new THREE.LineSegments(geometry,new THREE.LineBasicMaterial({color:0xa9b79b,transparent:true,opacity:.35}));grid.userData.owned=true;plate.add(grid);
   const outlineGeometry=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-w/2,-h/2,-.1),new THREE.Vector3(w/2,-h/2,-.1),new THREE.Vector3(w/2,h/2,-.1),new THREE.Vector3(-w/2,h/2,-.1)]);
   const outline=new THREE.LineLoop(outlineGeometry,new THREE.LineBasicMaterial({color:0x718564}));outline.userData.owned=true;plate.add(outline);
   updatePlateStatus();
@@ -125,7 +125,7 @@ $('#plate-preset').value=state.platePreset;$('#plate-width').value=state.plateWi
 $('#rows').value=state.rows;$('#cols').value=state.cols;$('#color-toggle').checked=state.color;
 $('#plate-max').onclick=()=>{
   if(busy||!loaded)return;
-  try{const size=maxTileSize(Number($('#plate-width').value),Number($('#plate-depth').value));$('#rows').value=size.rows;$('#cols').value=size.cols;applyInput();}catch(error){$('#plate-error').textContent=error.message;}
+  try{const size=maxTileSize(Number($('#plate-width').value),Number($('#plate-depth').value),state.modelVersion);$('#rows').value=size.rows;$('#cols').value=size.cols;applyInput();}catch(error){$('#plate-error').textContent=error.message;}
 };
 $('#plate-preset').onchange=e=>{const preset=platePresets.find(p=>p[0]===e.target.value);if(preset){$('#plate-width').value=preset[2];$('#plate-depth').value=preset[3];}applyPlateInput();};
 $$('#plate-width,#plate-depth').forEach(input=>input.addEventListener('input',()=>{$('#plate-preset').value='custom';applyPlateInput();}));
@@ -143,7 +143,7 @@ async function exportSTL(){
   $('#export-progress').hidden=false;$('#export-cancel').hidden=false;showExportProgress({value:0,stage:'準備中'});$('#export-status').textContent='';
   try{
     const result=await new Promise((resolve,reject)=>{
-      job.reject=reject;job.worker=new Worker(new URL('./export-worker.js?v=1.4.0',import.meta.url),{type:'module'});
+      job.reject=reject;job.worker=new Worker(new URL('./export-worker.js?v=1.4.1',import.meta.url),{type:'module'});
       job.worker.onmessage=({data})=>{if(activeExport!==job)return;if(data.progress)showExportProgress(data.progress);if(data.error)reject(new Error(data.error));if(data.result)resolve(data.result);};
       job.worker.onerror=e=>reject(new Error(e.message||'出力処理を開始できませんでした。'));job.worker.postMessage({sources,rows,cols,modelVersion});
     });
@@ -196,7 +196,7 @@ $('#settings-reset').onclick=()=>{
 try{
   init();await Promise.all(['v3','v2'].flatMap(version=>['corner','edge','center'].filter(type=>version==='v3'||type!=='center').map(async type=>{
     const path=version==='v2'?'./assets/v2/':'./assets/';
-    const res=await fetch(path+type+'.stl?v=1.4.0');if(!res.ok)throw new Error('STLを読み込めませんでした。');
+    const res=await fetch(path+type+'.stl?v=1.4.1');if(!res.ok)throw new Error('STLを読み込めませんでした。');
     const source=parseSTL(await res.arrayBuffer(),type),g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(source.positions,3));g.computeVertexNormals();
     sourceSets[version][type]=source;geometrySets[version][type]=g;outlineSets[version][type]=new THREE.EdgesGeometry(g,30);
   })));

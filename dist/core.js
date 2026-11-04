@@ -13,9 +13,16 @@ export function stepSize(value, direction, fallback=2) {
   const next=direction>0?Math.floor(start)+1:Math.ceil(start)-1;
   return Math.max(2,Math.min(32,next));
 }
-export function maxTileSize(width,depth){
+export function maxTileSize(width,depth,version='v3'){
   if(![width,depth].every(n=>Number.isFinite(n)&&n>=16&&n<=1000))throw new Error('造形範囲は16〜1000 mmで指定してください。');
-  return {rows:Math.min(32,Math.floor(depth/PITCH)),cols:Math.min(32,Math.floor(width/PITCH))};
+  const fit=length=>{
+    let count=Math.min(32,Math.floor((length+2*modelInset(version))/PITCH));
+    // Compare rounded physical dimensions at exact decimal boundaries.
+    while(count<32&&tileSpan(count+1,version)<=length)count++;
+    while(count>0&&tileSpan(count,version)>length)count--;
+    return count;
+  };
+  return {rows:fit(depth),cols:fit(width)};
 }
 export function placements(rows, cols) {
   if (![rows, cols].every(n => Number.isInteger(n) && n >= 2 && n <= 32)) throw new Error('縦・横は2〜32の整数を入力してください。');

@@ -122,9 +122,22 @@ try{
   await send('Page.navigate',{url:origin+'/?verify='+version});
   await poll(()=>evaluate("document.querySelector('#model-status')?.textContent.includes('自動配置済み') && !document.querySelector('#export')?.disabled"),'3D model initialized',45000);
   if(!publicSite)assert.deepEqual(assetRequests.slice(3).sort(),['corner','edge','center','v2/corner','v2/edge'].map(type=>`/assets/${type}.stl?v=${version}`).sort(),'current app must bypass the warmed legacy model cache');
+  async function verifyReadableText(){
+    const small=await evaluate("[...document.querySelectorAll('body *')].filter(el=>el.childElementCount===0&&el.textContent.trim()&&el.getBoundingClientRect().width&&el.getBoundingClientRect().height&&!(el instanceof SVGElement)&&getComputedStyle(el).visibility!=='hidden').map(el=>({text:el.textContent.slice(0,60),size:parseFloat(getComputedStyle(el).fontSize)})).filter(item=>item.size<11)");
+    assert.deepEqual(small,[],'visible text should be at least 11px');
+    assert.equal(await evaluate("document.documentElement.scrollWidth<=innerWidth+1"),true,'no horizontal page overflow');
+  }
+  await verifyReadableText();
   const initial=await evaluate("({rows:document.querySelector('#rows').value,cols:document.querySelector('#cols').value,preset:document.querySelector('[data-size].active')?.dataset.size,closed:[...document.querySelectorAll('.collapsible-section')].every(x=>!x.open)})");
   assert.deepEqual(initial,{rows:'2',cols:'4',preset:'2,4',closed:true});
   assert.equal(await evaluate("document.querySelector('#model-version').value"),'v3');
+  // The v3 clearance must increase capacity exactly at a physical-size boundary.
+  await evaluate("for(const [id,value] of [['plate-width','31.8'],['plate-depth','47.8']]){const el=document.querySelector('#'+id);el.value=value;el.dispatchEvent(new Event('input'));}document.querySelector('#plate-max').click()");
+  assert.deepEqual(await evaluate("[document.querySelector('#rows').value,document.querySelector('#cols').value]"),['6','4']);
+  assert.ok((await evaluate("document.querySelector('#plate-capacity').textContent")).includes('31.8 × 47.8'));
+  await evaluate("document.querySelector('#model-version').value='v2';document.querySelector('#model-version').dispatchEvent(new Event('change'));document.querySelector('#plate-max').click()");
+  assert.deepEqual(await evaluate("[document.querySelector('#rows').value,document.querySelector('#cols').value]"),['5','3']);
+  await evaluate("document.querySelector('#settings-reset').click()");
   await evaluate("document.querySelector('#plate-preset').value='custom';document.querySelector('#plate-preset').dispatchEvent(new Event('change'))");
   await reloadReady('custom printer selection saved');
   assert.equal(await evaluate("document.querySelector('#plate-preset').value"),'custom');
@@ -210,7 +223,8 @@ try{
 
   assert.equal(await evaluate("document.querySelector('#project-name').textContent"),'Tile_2×4');
   assert.equal(await evaluate("document.querySelector('#plate-preset').value"),'a1-mini');
-  assert.equal(await evaluate("document.querySelector('#model-color').value"),'#d3d5d8');
+  assert.equal(await evaluate("document.querySelector('#model-color').value"),'#adb4bc');
+  await verifyReadableText();
   // Check actual on-screen sprite bounds for narrow viewports and wide models.
   await evaluate("for(const [id,value] of [['rows','2'],['cols','32']]){const el=document.querySelector('#'+id);el.value=value;el.dispatchEvent(new Event('input'));}");
   for(const view of ['top','bottom','iso']){
