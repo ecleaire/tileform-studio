@@ -228,7 +228,20 @@ try{
   // Check actual on-screen sprite bounds for narrow viewports and wide models.
   await evaluate("for(const [id,value] of [['rows','2'],['cols','32']]){const el=document.querySelector('#'+id);el.value=value;el.dispatchEvent(new Event('input'));}");
   for(const view of ['top','bottom','iso']){
-    await evaluate(`document.querySelector('[data-view="${view}"]').click();document.querySelector('#fit').click();for(let i=0;i<4;i++)document.querySelector('#zoom-in').click()`);
+    await evaluate(`document.querySelector('[data-view="${view}"]').click();document.querySelector('#fit').click()`);
+    await evaluate("new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))");
+    const fitted=await evaluate(`(async()=>{
+      const {Box3,Vector3}=await import('./vendor/three.js'),camera=window.__tileformCamera,wrap=document.querySelector('#canvas-wrap'),rect=wrap.getBoundingClientRect();
+      const group=window.__tileformScene.children.find(g=>g.children.some(m=>m.userData.type)),box=new Box3().setFromObject(group),points=[];
+      for(const x of [box.min.x,box.max.x])for(const y of [box.min.y,box.max.y])for(const z of [box.min.z,box.max.z]){const p=new Vector3(x,y,z).project(camera);points.push([(p.x+1)*rect.width/2,(1-p.y)*rect.height/2]);}
+      const tools=document.querySelector('.viewport-tools').getBoundingClientRect();
+      return {left:Math.min(...points.map(p=>p[0])),right:Math.max(...points.map(p=>p[0])),top:Math.min(...points.map(p=>p[1])),bottom:Math.max(...points.map(p=>p[1])),w:rect.width,h:rect.height,tools:{left:tools.left-rect.left,right:tools.right-rect.left,top:tools.top-rect.top,bottom:tools.bottom-rect.top}};
+    })()`);
+    assert.ok(fitted.left>=0&&fitted.right<=fitted.w&&fitted.top>=0&&fitted.bottom<=fitted.h,view+': model must fit');
+    assert.ok(Math.max((fitted.right-fitted.left)/fitted.w,(fitted.bottom-fitted.top)/fitted.h)>.35,view+': tile must be large enough to inspect');
+    const overlapW=Math.min(fitted.right,fitted.tools.right)-Math.max(fitted.left,fitted.tools.left),overlapH=Math.min(fitted.bottom,fitted.tools.bottom)-Math.max(fitted.top,fitted.tools.top);
+    assert.ok(overlapW<=0||overlapH<=0,view+': controls must not cover fitted tile');
+    await evaluate("for(let i=0;i<4;i++)document.querySelector('#zoom-in').click()");;
     await evaluate("new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))");
     const bounds=await evaluate(`(()=>{
       const camera=window.__tileformCamera,wrap=document.querySelector('#canvas-wrap'),w=wrap.clientWidth,h=wrap.clientHeight;
