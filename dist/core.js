@@ -1,5 +1,11 @@
 export const PITCH = 8;
 export const HEIGHT = 3.15;
+export const OUTER_INSET = 0.1;
+export function modelInset(version='v3'){
+  if(!['v2','v3'].includes(version))throw new Error('対応していないモデルです。');
+  return version==='v3'?OUTER_INSET:0;
+}
+export const tileSpan = (count,version='v3') => Number((count * PITCH - 2 * modelInset(version)).toFixed(3));
 // Step to the next integer even if the input is temporarily fractional.
 export function stepSize(value, direction, fallback=2) {
   const current=typeof value==='string'&&value.trim()===''?NaN:Number(value);
@@ -18,7 +24,7 @@ export function placements(rows, cols) {
     const top=r===0,bottom=r===rows-1,left=c===0,right=c===cols-1;
     const type=(top||bottom)&&(left||right)?'corner':(top||bottom||left||right)?'edge':'center';
     let q=0;
-    // v2 source corner closes +X/-Y; source edge closes +X.
+    // v3 source corner closes +X/-Y; source edge closes +X.
     // Rotate those closed walls toward the exterior of the assembled tile.
     if(type==='corner') q=bottom&&right?0:top&&right?1:top&&left?2:3;
     if(type==='edge') q=right?0:top?1:left?2:3;
@@ -26,12 +32,15 @@ export function placements(rows, cols) {
   }
   return parts;
 }
-export function parseSTL(buffer) {
+export function parseSTL(buffer, sourceType) {
   const d=new DataView(buffer),n=d.getUint32(80,true);
   if(buffer.byteLength!==84+n*50) throw new Error('対応していないSTL形式です。');
   const positions=new Float32Array(n*9),min=[Infinity,Infinity,Infinity],max=[-Infinity,-Infinity,-Infinity];
   for(let i=0;i<n;i++)for(let j=0;j<9;j++){const v=d.getFloat32(84+i*50+12+j*4,true);positions[i*9+j]=v;const k=j%3;min[k]=Math.min(min[k],v);max[k]=Math.max(max[k],v);}
-  for(let i=0;i<positions.length;i++)positions[i]=positions[i]-min[i%3]-(i%3<2?4:0);
+  // v3 trims the corner's -Y exterior. Anchor its untrimmed +Y seam
+  // to the 8 mm cell, preserving the 0.1 mm inset instead of shifting it inward.
+  const origin=[min[0],sourceType==='corner'?max[1]-PITCH:min[1],min[2]];
+  for(let i=0;i<positions.length;i++)positions[i]=positions[i]-origin[i%3]-(i%3<2?4:0);
   return {positions,triangles:n,size:max.map((v,k)=>v-min[k])};
 }
 export function indexedMesh(positions) {

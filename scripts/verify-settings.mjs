@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
 import {DEFAULT_SETTINGS,SETTINGS_KEY,readSettings,writeSettings} from '../dist/settings.js';
-import {maxTileSize} from '../dist/core.js';
+import {maxTileSize,tileSpan} from '../dist/core.js';
 let value=null;const storage={getItem:()=>value,setItem:(key,input)=>{assert.equal(key,SETTINGS_KEY);value=input;}};
 assert.deepEqual(readSettings(storage),DEFAULT_SETTINGS);
-const state={...DEFAULT_SETTINGS,rows:6,cols:4,plateWidth:179.5,plateDepth:120,platePreset:'custom',modelColor:'#123456',color:true,explode:true};
+const state={...DEFAULT_SETTINGS,rows:6,cols:4,plateWidth:179.5,plateDepth:120,platePreset:'custom',modelColor:'#123456',color:true,explode:true,modelVersion:'v2'};
 assert.equal(writeSettings(storage,state),true);assert.deepEqual(readSettings(storage),Object.fromEntries(Object.keys(DEFAULT_SETTINGS).map(key=>[key,state[key]])));
+value=JSON.stringify({version:1,settings:{modelVersion:'bad'}});assert.equal(readSettings(storage).modelVersion,'v3');
+assert.equal(tileSpan(4,'v3'),31.8);assert.equal(tileSpan(4,'v2'),32);assert.throws(()=>tileSpan(4,'bad'));
 value='bad JSON';assert.deepEqual(readSettings(storage),DEFAULT_SETTINGS);
 value=JSON.stringify({version:1,settings:{rows:33,cols:2.5,plateWidth:Infinity,plateDepth:-1,modelColor:'<script>',color:'false'}});assert.deepEqual(readSettings(storage),DEFAULT_SETTINGS);
 const blocked={getItem(){throw Error('blocked');},setItem(){throw Error('blocked');}};assert.deepEqual(readSettings(blocked),DEFAULT_SETTINGS);assert.equal(writeSettings(blocked,state),false);

@@ -26,7 +26,7 @@ const server=createHttpServer((req,res)=>{
  const path=resolve(root,'.'+(url.pathname==='/'?'/index.html':url.pathname));
  if(!path.startsWith(root+sep)){res.writeHead(403);res.end();return;}
  try{
-  const model=/\/assets\/(corner|edge|center)\.stl$/.test(url.pathname);
+  const model=/\/assets\/(?:v2\/)?(corner|edge|center)\.stl$/.test(url.pathname);
   const body=model&&!url.search?Buffer.from('stale-model:'+url.pathname):readFileSync(path);
   if(model)assetRequests.push(url.pathname+url.search);
   res.writeHead(200,{'Content-Type':mime[extname(path)]||'application/octet-stream','Cache-Control':model?'public, max-age=31536000':'no-cache'});res.end(body);
@@ -56,7 +56,7 @@ try{
       const response=await fetch(origin+'/?verify='+version,{signal:AbortSignal.timeout(10000),cache:'no-store'});
       return response.ok&&(await response.text()).includes('v'+version);
     },'published version '+version,180000);
-    for(const file of ['app.js','core.js','settings.js','export-worker.js','solid.js','style.css','assets/corner.stl','assets/edge.stl','assets/center.stl','vendor/manifold.wasm']){
+    for(const file of ['app.js','core.js','settings.js','export-worker.js','solid.js','style.css','assets/corner.stl','assets/edge.stl','assets/center.stl','assets/v2/corner.stl','assets/v2/edge.stl','vendor/manifold.wasm']){
       const response=await fetch(origin+'/'+file+'?v='+version,{signal:AbortSignal.timeout(15000),cache:'no-store'});
       assert.equal(response.status,200,'published '+file);
       const digest=buffer=>createHash('sha256').update(buffer).digest('hex');
@@ -121,9 +121,10 @@ try{
   }
   await send('Page.navigate',{url:origin+'/?verify='+version});
   await poll(()=>evaluate("document.querySelector('#model-status')?.textContent.includes('自動配置済み') && !document.querySelector('#export')?.disabled"),'3D model initialized',45000);
-  if(!publicSite)assert.deepEqual(assetRequests.slice(3).sort(),['corner','edge','center'].map(type=>`/assets/${type}.stl?v=${version}`).sort(),'current app must bypass the warmed legacy model cache');
+  if(!publicSite)assert.deepEqual(assetRequests.slice(3).sort(),['corner','edge','center','v2/corner','v2/edge'].map(type=>`/assets/${type}.stl?v=${version}`).sort(),'current app must bypass the warmed legacy model cache');
   const initial=await evaluate("({rows:document.querySelector('#rows').value,cols:document.querySelector('#cols').value,preset:document.querySelector('[data-size].active')?.dataset.size,closed:[...document.querySelectorAll('.collapsible-section')].every(x=>!x.open)})");
   assert.deepEqual(initial,{rows:'2',cols:'4',preset:'2,4',closed:true});
+  assert.equal(await evaluate("document.querySelector('#model-version').value"),'v3');
   await evaluate("document.querySelector('#plate-preset').value='custom';document.querySelector('#plate-preset').dispatchEvent(new Event('change'))");
   await reloadReady('custom printer selection saved');
   assert.equal(await evaluate("document.querySelector('#plate-preset').value"),'custom');
@@ -157,7 +158,7 @@ try{
   assert.equal(await evaluate("document.querySelector('#rows').value"),'3');
   await evaluate("document.querySelector('[data-view=\"top\"]').click();document.querySelector('#fit').click()");
   assert.equal(await evaluate("document.querySelector('[data-view=\"top\"]').classList.contains('active')"),true);
-  await evaluate("document.querySelectorAll('.collapsible-section')[1].open=true;{const el=document.querySelector('#model-color-hex');el.value='#abc';el.dispatchEvent(new Event('input',{bubbles:true}));}");
+  await evaluate("document.querySelector('#model-color-hex').closest('details').open=true;{const el=document.querySelector('#model-color-hex');el.value='#abc';el.dispatchEvent(new Event('input',{bubbles:true}));}");
   assert.equal(await evaluate("document.querySelector('#model-color').value"),'#aabbcc');
   assert.equal(await evaluate("document.querySelector('#model-color-hex').value"),'#abc');
   await evaluate("{const el=document.querySelector('#model-color-hex');el.value='#123456';el.dispatchEvent(new Event('input',{bubbles:true}));}");
@@ -169,10 +170,10 @@ try{
   await send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
   await delay(300);
   assert.equal(await evaluate("getComputedStyle(document.querySelector('.studio')).order"),'-1');
-  await evaluate("document.querySelectorAll('.collapsible-section')[1].open=false");
+  await evaluate("document.querySelector('#model-color-hex').closest('details').open=false");
   assert.equal(await evaluate("[...document.querySelectorAll('.collapsible-section')].every(x=>!x.open)"),true);
   // The maximum-size action follows the bed axes and obeys the application cap.
-  await evaluate("document.querySelectorAll('.collapsible-section')[0].open=true;document.querySelector('#plate-max').click()");
+  await evaluate("document.querySelector('#plate-max').closest('details').open=true;document.querySelector('#plate-max').click()");
   assert.equal(await evaluate("document.querySelector('#project-name').textContent"),'Tile_22×22');
   await evaluate("document.querySelector('#plate-preset').value='prusa-mk4s';document.querySelector('#plate-preset').dispatchEvent(new Event('change'));document.querySelector('#plate-max').click()");
   assert.equal(await evaluate("document.querySelector('#project-name').textContent"),'Tile_26×31');
@@ -192,9 +193,19 @@ try{
   await poll(()=>evaluate("document.querySelector('#export-status').textContent.includes('保存しました')"),'export after cancellation',90000);
   assert.equal(await evaluate("document.querySelector('#export-progressbar').value"),1);
   const output=await evaluate("(async()=>{const buffer=await window.__lastExport.arrayBuffer(),view=new DataView(buffer),n=view.getUint32(80,true),min=[Infinity,Infinity,Infinity],max=[-Infinity,-Infinity,-Infinity];for(let i=0;i<n;i++)for(let j=0;j<9;j++){const x=view.getFloat32(84+i*50+12+j*4,true),axis=j%3;min[axis]=Math.min(min[axis],x);max[axis]=Math.max(max[axis],x);}return {valid:buffer.byteLength===84+50*n,n,size:max.map((v,i)=>Math.round((v-min[i])*100)/100)};})()");
-  assert.ok(output.valid&&output.n>0);assert.deepEqual(output.size,[32,16,3.12]);
+  assert.ok(output.valid&&output.n>0);assert.deepEqual(output.size,[31.8,15.8,3.12]);
+  await evaluate("document.querySelector('#model-version').value='v2';document.querySelector('#model-version').dispatchEvent(new Event('change'))");
+  assert.ok((await evaluate("document.querySelector('#size-mm').textContent")).includes('32 mm'));
+  await reloadReady('restored v2 model');
+  assert.equal(await evaluate("document.querySelector('#model-version').value"),'v2');
+  await evaluate("window.__lastExport=null;document.querySelector('#export').click()");
+  await poll(()=>evaluate("window.__lastExport!=null && !document.querySelector('#export').disabled"),'v2 STL export',90000);
+  const alternateOutput=await evaluate("(async()=>{const buffer=await window.__lastExport.arrayBuffer(),view=new DataView(buffer),n=view.getUint32(80,true),min=[Infinity,Infinity,Infinity],max=[-Infinity,-Infinity,-Infinity];for(let i=0;i<n;i++)for(let j=0;j<9;j++){const x=view.getFloat32(84+i*50+12+j*4,true),axis=j%3;min[axis]=Math.min(min[axis],x);max[axis]=Math.max(max[axis],x);}return {valid:buffer.byteLength===84+50*n,n,size:max.map((v,i)=>Math.round((v-min[i])*100)/100)};})()");
+  assert.ok(alternateOutput.valid);assert.deepEqual(alternateOutput.size,[32,16,3.12]);
+
   await evaluate("{const el=document.querySelector('#explode-toggle');el.checked=true;el.dispatchEvent(new Event('change'));}document.querySelector('[data-view=\"bottom\"]').click();document.querySelector('#settings-reset').click()");
   assert.equal(await evaluate("document.querySelector('#explode-toggle').checked"),false);
+  assert.equal(await evaluate("document.querySelector('#model-version').value"),'v3');
   assert.equal(await evaluate("document.querySelector('[data-view].active').dataset.view"),'iso');
 
   assert.equal(await evaluate("document.querySelector('#project-name').textContent"),'Tile_2×4');

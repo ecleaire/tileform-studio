@@ -1,10 +1,12 @@
 import * as THREE from 'three';
 import {OrbitControls} from './vendor/OrbitControls.js';
-import {placements,parseSTL,PITCH,HEIGHT,stepSize,maxTileSize} from './core.js?v=1.3.0';
-import {DEFAULT_SETTINGS,SETTINGS_KEY,readSettings,writeSettings} from './settings.js?v=1.3.0';
+import {placements,parseSTL,PITCH,HEIGHT,stepSize,maxTileSize,tileSpan} from './core.js?v=1.4.0';
+import {DEFAULT_SETTINGS,SETTINGS_KEY,readSettings,writeSettings} from './settings.js?v=1.4.0';
 const $=s=>document.querySelector(s),$$=s=>document.querySelectorAll(s);
 let restored;try{restored=readSettings(localStorage);}catch{restored={...DEFAULT_SETTINGS};}
 const state={...restored,explode:false,view:'iso'},sources={},geometries={},outlines={},materials={},meshes=[];
+const sourceSets={v2:{},v3:{}},geometrySets={v2:{},v3:{}},outlineSets={v2:{},v3:{}};
+const span=count=>tileSpan(count,state.modelVersion);
 const platePresets=[
   ['a1-mini','Bambu Lab A1 mini',180,180],
   ['bambu-256','Bambu Lab A1 / P1S / X1C',256,256],
@@ -19,7 +21,7 @@ const outlineMaterial=new THREE.LineBasicMaterial({color:0x40513d,transparent:tr
 let scene,camera,renderer,controls,group,dimensions,plate,zoomSpan=40,activeExport,loaded=false,busy=false;
 function saveSettings(){
   let saved=false;try{saved=writeSettings(localStorage,state);}catch{}
-  $('#settings-note').textContent=saved?'サイズ・色・プリンター設定は、このブラウザに自動保存します。':'このブラウザでは設定を保存できません。現在の設定はこの画面で使えます。';
+  $('#settings-note').textContent=saved?'サイズ・モデル・色・プリンター設定は、このブラウザに自動保存します。':'このブラウザでは設定を保存できません。現在の設定はこの画面で使えます。';
 }
 function lighting(s){s.add(new THREE.AmbientLight(0xffffff,1.3));const a=new THREE.DirectionalLight(0xffffff,3);a.position.set(-20,-30,65);s.add(a);const b=new THREE.DirectionalLight(0xffffff,1);b.position.set(35,20,15);s.add(b);}
 function init(){
@@ -62,21 +64,34 @@ function fit(){
 }
 function clear(g){while(g.children.length){const c=g.children[0];g.remove(c);if(c.userData.owned){c.geometry?.dispose();c.material?.map?.dispose();c.material?.dispose();}}}
 function label(text,position,side){const c=document.createElement('canvas');c.width=512;c.height=88;const x=c.getContext('2d');x.font='500 42px "Space Grotesk", sans-serif';x.textAlign='center';x.textBaseline='middle';x.fillStyle='#f4f6ee';x.fillRect(0,13,512,62);x.fillStyle='#859375';x.fillText(text,256,46,492);const tex=new THREE.CanvasTexture(c);tex.colorSpace=THREE.SRGBColorSpace;const s=new THREE.Sprite(new THREE.SpriteMaterial({map:tex,depthTest:false,transparent:true,toneMapped:false}));s.position.copy(position);const labelWidth=Math.max(24,Math.max(state.plateWidth,state.plateDepth)*.18);s.scale.set(labelWidth,labelWidth*88/512,1);s.userData.owned=true;s.userData.anchor=position.clone();s.userData.side=side;dimensions.add(s);updateLabelScales();}
-function dimensionLines(){clear(dimensions);const w=state.cols*8,h=state.rows*8,pts=[];const add=(a,b)=>pts.push(...a,...b);const gap=state.explode?3:0,x=w/2+7+state.cols*gap/2,y=-h/2-7-state.rows*gap/2;
+function dimensionLines(){clear(dimensions);const w=span(state.cols),h=span(state.rows),pts=[];const add=(a,b)=>pts.push(...a,...b);const gap=state.explode?3:0,x=w/2+7+state.cols*gap/2,y=-h/2-7-state.rows*gap/2;
   add([-w/2,y,0],[w/2,y,0]);add([-w/2,y-1,0],[-w/2,y+1,0]);add([w/2,y-1,0],[w/2,y+1,0]);add([x,-h/2,0],[x,h/2,0]);add([x-1,-h/2,0],[x+1,-h/2,0]);add([x-1,h/2,0],[x+1,h/2,0]);
   const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(pts,3));const l=new THREE.LineSegments(g,new THREE.LineBasicMaterial({color:0xa7b29b,transparent:true,opacity:.8}));l.userData.owned=true;dimensions.add(l);label(`${state.cols}マス, ${w} mm`,new THREE.Vector3(0,y,0));label(`${state.rows}マス, ${h} mm`,new THREE.Vector3(x+3,0,0),'right');}
 function assemble(){
   clear(group);meshes.length=0;const parts=placements(state.rows,state.cols),gap=state.explode?2.4:0;
   for(const p of parts){const m=new THREE.Mesh(geometries[p.type],state.color?materials[p.type]:materials.single);m.rotation.z=p.q*Math.PI/2;m.position.set((p.c-(state.cols-1)/2)*(8+gap),((state.rows-1)/2-p.r)*(8+gap),0);m.userData.type=p.type;m.add(new THREE.LineSegments(outlines[p.type],outlineMaterial));group.add(m);meshes.push(m);}
-  dimensionLines();$('#project-name').textContent=`Tile_${state.rows}×${state.cols}`;$('#size-mm').innerHTML=`<span>横 ${state.cols}マス, ${state.cols*PITCH} mm</span><span>縦 ${state.rows}マス, ${state.rows*PITCH} mm</span>`;$('#size-note').textContent=`横 × 縦 · 厚さ ${state.rows>2&&state.cols>2?'3.15':'3.12'} mm`;$('#total').textContent=parts.length;for(const type of ['corner','edge','center'])$(`#count-${type}`).textContent=parts.filter(p=>p.type===type).length;$('#model-status').textContent=`${state.rows} × ${state.cols} · 自動配置済み`;
+  dimensionLines();$('#project-name').textContent=`Tile_${state.rows}×${state.cols}`;$('#size-mm').innerHTML=`<span>横 ${state.cols}マス, ${span(state.cols)} mm</span><span>縦 ${state.rows}マス, ${span(state.rows)} mm</span>`;$('#size-note').textContent=`横 × 縦 · 厚さ ${state.rows>2&&state.cols>2?'3.15':'3.12'} mm`;$('#total').textContent=parts.length;for(const type of ['corner','edge','center'])$(`#count-${type}`).textContent=parts.filter(p=>p.type===type).length;$('#model-status').textContent=`${state.rows} × ${state.cols} · ${state.modelVersion} · 自動配置済み`;
   updatePlateStatus();
   $$('[data-size]').forEach(b=>b.classList.toggle('active',b.dataset.size===`${state.rows},${state.cols}`));
 }
-function thumb(type){const el=$(`#thumb-${type}`),r=new THREE.WebGLRenderer({antialias:true,alpha:true});r.setSize(el.clientWidth||60,el.clientHeight||65);r.setPixelRatio(Math.min(devicePixelRatio,2));r.setClearColor(0,0);r.toneMapping=THREE.ACESFilmicToneMapping;const s=new THREE.Scene();lighting(s);const c=new THREE.OrthographicCamera(-6.5,6.5,7,-7,.1,100);c.up.set(0,0,1);c.position.set(12,-17,25);c.lookAt(0,0,1);const m=new THREE.Mesh(geometries[type],materials[type]);s.add(m);r.render(s,c);const img=document.createElement('img');img.src=r.domElement.toDataURL();img.alt=`${{corner:'角',edge:'端',center:'中'}[type]}パーツの形状`;img.style.cssText='width:100%;height:100%;object-fit:contain';el.append(img);r.dispose();}
+function thumb(type){const el=$(`#thumb-${type}`),r=new THREE.WebGLRenderer({antialias:true,alpha:true});r.setSize(el.clientWidth||60,el.clientHeight||65);r.setPixelRatio(Math.min(devicePixelRatio,2));r.setClearColor(0,0);r.toneMapping=THREE.ACESFilmicToneMapping;const s=new THREE.Scene();lighting(s);const c=new THREE.OrthographicCamera(-6.5,6.5,7,-7,.1,100);c.up.set(0,0,1);c.position.set(12,-17,25);c.lookAt(0,0,1);const m=new THREE.Mesh(geometries[type],materials[type]);s.add(m);r.render(s,c);const img=document.createElement('img');img.src=r.domElement.toDataURL();img.alt=`${{corner:'角',edge:'端',center:'中'}[type]}パーツの形状`;img.style.cssText='width:100%;height:100%;object-fit:contain';el.replaceChildren(img);r.dispose();}
+function activateModel(){
+  Object.assign(sources,sourceSets[state.modelVersion]);Object.assign(geometries,geometrySets[state.modelVersion]);Object.assign(outlines,outlineSets[state.modelVersion]);
+  for(const type of ['corner','edge','center']){thumb(type);$('#thumb-'+type).parentElement.querySelector('.part-source').textContent=({corner:'角',edge:'端',center:'中'})[type]+(type==='center'?'v2':type==='corner'&&state.modelVersion==='v3'?'v3.1':state.modelVersion)+'.stl';}
+}
+function updateModelSelection(){
+  $('#model-version').value=state.modelVersion;
+  $('#model-version-note').textContent=state.modelVersion==='v3'?'外周だけ各辺0.1 mm小さくなります。外寸：マス数×8−0.2 mm。角はv3.1・端はv3・中はv2。':'外周削減なし。外寸：マス数×8 mm。角・端・中すべてv2。';
+}
+updateModelSelection();
+$('#model-version').onchange=()=>{
+  if(busy)return;state.modelVersion=$('#model-version').value;updateModelSelection();saveSettings();
+  if(loaded){activateModel();applyInput();}
+};
 function updatePlateStatus(){
   const cols=Math.floor(state.plateWidth/PITCH),rows=Math.floor(state.plateDepth/PITCH);
   $('#plate-capacity').textContent=`${cols} × ${rows}マス / ${cols*PITCH} × ${rows*PITCH} mm`;
-  const outside=state.cols*PITCH>state.plateWidth||state.rows*PITCH>state.plateDepth;
+  const outside=span(state.cols)>state.plateWidth||span(state.rows)>state.plateDepth;
   $('#plate-status').textContent=outside?'タイルが造形範囲を超えています。サイズか造形範囲を見直してください。':'タイルは造形範囲内です。';
   $('#plate-status').classList.toggle('outside',outside);
 }
@@ -115,7 +130,7 @@ $('#plate-max').onclick=()=>{
 $('#plate-preset').onchange=e=>{const preset=platePresets.find(p=>p[0]===e.target.value);if(preset){$('#plate-width').value=preset[2];$('#plate-depth').value=preset[3];}applyPlateInput();};
 $$('#plate-width,#plate-depth').forEach(input=>input.addEventListener('input',()=>{$('#plate-preset').value='custom';applyPlateInput();}));
 function applyInput(){const rows=Number($('#rows').value),cols=Number($('#cols').value);try{placements(rows,cols);$('#input-error').textContent='';state.rows=rows;state.cols=cols;saveSettings();if(loaded){assemble();fit();}$('#export').disabled=!loaded||busy;}catch(e){$('#input-error').textContent=e.message;$('#export').disabled=true;}}
-function setSizeInputLocked(locked){$$('#rows,#cols,.stepper button,[data-size],#plate-max,#settings-reset').forEach(el=>{el.disabled=locked;});$('#plate-max').disabled=locked||Boolean($('#plate-error').textContent);}
+function setSizeInputLocked(locked){$$('#rows,#cols,.stepper button,[data-size],#plate-max,#settings-reset,#model-version').forEach(el=>{el.disabled=locked;});$('#plate-max').disabled=locked||Boolean($('#plate-error').textContent);}
 function showExportProgress(progress){
   const value=Math.max(0,Math.min(1,progress.value));
   $('#export-progressbar').value=value;$('#export-phase').textContent=`${progress.stage} · ${Math.round(value*100)}%`;
@@ -123,16 +138,16 @@ function showExportProgress(progress){
 $('#export-cancel').onclick=()=>{const job=activeExport;if(!job)return;activeExport=null;job.worker?.terminate();job.reject?.(new DOMException('出力をキャンセルしました。','AbortError'));};
 async function exportSTL(){
   if(busy||!loaded)return;
-  busy=true;const rows=state.rows,cols=state.cols,job={worker:null,reject:null};activeExport=job;
+  busy=true;const rows=state.rows,cols=state.cols,modelVersion=state.modelVersion,job={worker:null,reject:null};activeExport=job;
   setSizeInputLocked(true);$('#export').disabled=true;$('#export span').textContent='一体化しています…';
   $('#export-progress').hidden=false;$('#export-cancel').hidden=false;showExportProgress({value:0,stage:'準備中'});$('#export-status').textContent='';
   try{
     const result=await new Promise((resolve,reject)=>{
-      job.reject=reject;job.worker=new Worker(new URL('./export-worker.js?v=1.3.0',import.meta.url),{type:'module'});
+      job.reject=reject;job.worker=new Worker(new URL('./export-worker.js?v=1.4.0',import.meta.url),{type:'module'});
       job.worker.onmessage=({data})=>{if(activeExport!==job)return;if(data.progress)showExportProgress(data.progress);if(data.error)reject(new Error(data.error));if(data.result)resolve(data.result);};
-      job.worker.onerror=e=>reject(new Error(e.message||'出力処理を開始できませんでした。'));job.worker.postMessage({sources,rows,cols});
+      job.worker.onerror=e=>reject(new Error(e.message||'出力処理を開始できませんでした。'));job.worker.postMessage({sources,rows,cols,modelVersion});
     });
-    const blob=new Blob([result.buffer],{type:'model/stl'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`tileform_${rows}x${cols}_${cols*8}x${rows*8}mm.stl`;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);
+    const blob=new Blob([result.buffer],{type:'model/stl'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`tileform_${modelVersion}_${rows}x${cols}_${span(cols)}x${span(rows)}mm.stl`;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);
     showExportProgress({value:1,stage:'完了'});$('#export-status').textContent=`保存しました · ${result.triangles.toLocaleString()}面 · 単一ソリッド · ${(blob.size/1024).toFixed(0)} KB`;
   }catch(e){
     if(e.name==='AbortError'){$('#export-phase').textContent='キャンセルしました';$('#export-status').textContent='出力をキャンセルしました。サイズを変えて再実行できます。';}
@@ -175,9 +190,17 @@ $('#color-toggle').onchange=e=>{state.color=e.target.checked;saveSettings();for(
 $('#settings-reset').onclick=()=>{
   if(busy)return;Object.assign(state,DEFAULT_SETTINGS,{explode:false,view:'iso'});
   $('#rows').value=state.rows;$('#cols').value=state.cols;$('#plate-width').value=state.plateWidth;$('#plate-depth').value=state.plateDepth;$('#plate-preset').value=state.platePreset;$('#color-toggle').checked=false;$('#explode-toggle').checked=false;
-  setModelColor(state.modelColor);applyPlateInput();applyInput();if(loaded)setView('iso');
+  updateModelSelection();if(loaded)activateModel();setModelColor(state.modelColor);applyPlateInput();applyInput();if(loaded)setView('iso');
   try{localStorage.removeItem(SETTINGS_KEY);}catch{}
 };
 try{
-  init();await Promise.all(['corner','edge','center'].map(async type=>{const res=await fetch(`./assets/${type}.stl?v=1.3.0`);if(!res.ok)throw new Error('STLを読み込めませんでした。');sources[type]=parseSTL(await res.arrayBuffer());const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(sources[type].positions,3));g.computeVertexNormals();geometries[type]=g;outlines[type]=new THREE.EdgesGeometry(g,30);materials[type]=new THREE.MeshStandardMaterial({color:colors[type],roughness:.7,metalness:0,flatShading:true,side:THREE.DoubleSide});}));materials.single=new THREE.MeshStandardMaterial({color:state.modelColor,roughness:.7,flatShading:true,side:THREE.DoubleSide});loaded=true;applyInput();for(const type of ['corner','edge','center'])thumb(type);$('#loading').remove();
+  init();await Promise.all(['v3','v2'].flatMap(version=>['corner','edge','center'].filter(type=>version==='v3'||type!=='center').map(async type=>{
+    const path=version==='v2'?'./assets/v2/':'./assets/';
+    const res=await fetch(path+type+'.stl?v=1.4.0');if(!res.ok)throw new Error('STLを読み込めませんでした。');
+    const source=parseSTL(await res.arrayBuffer(),type),g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(source.positions,3));g.computeVertexNormals();
+    sourceSets[version][type]=source;geometrySets[version][type]=g;outlineSets[version][type]=new THREE.EdgesGeometry(g,30);
+  })));
+  sourceSets.v2.center=sourceSets.v3.center;geometrySets.v2.center=geometrySets.v3.center;outlineSets.v2.center=outlineSets.v3.center;
+  for(const type of ['corner','edge','center'])materials[type]=new THREE.MeshStandardMaterial({color:colors[type],roughness:.7,metalness:0,flatShading:true,side:THREE.DoubleSide});
+  materials.single=new THREE.MeshStandardMaterial({color:state.modelColor,roughness:.7,flatShading:true,side:THREE.DoubleSide});loaded=true;activateModel();applyInput();$('#loading').remove();
 }catch(e){$('#loading').textContent=`プレビューを開始できませんでした：${e.message}`;$('#model-status').textContent='読み込みエラー';console.error(e);}

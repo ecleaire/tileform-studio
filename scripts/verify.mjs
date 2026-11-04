@@ -2,13 +2,20 @@ import fs from 'node:fs';
 import assert from 'node:assert/strict';
 import {placements,parseSTL,indexedMesh,stepSize} from '../dist/core.js';
 import {unite} from '../dist/solid.js';
+for(const version of ['v3','v2']){
 const sources={};
-const sourceTriangleCounts={corner:316,edge:528,center:1004};
+const sourceTriangleCounts={corner:version==='v3'?318:316,edge:528,center:1004};
 for(const t of ['corner','edge','center']){
- const b=fs.readFileSync(`dist/assets/${t}.stl`);
- sources[t]=parseSTL(b.buffer.slice(b.byteOffset,b.byteOffset+b.byteLength));
- assert.equal(sources[t].triangles,sourceTriangleCounts[t],`${t}: expected v2 source model`);
- assert.deepEqual(sources[t].size.map(v=>Math.round(v*100)/100),[8,8,t==='center'?3.15:3.12]);
+ const b=fs.readFileSync(`dist/assets/${version==='v2'&&t!=='center'?'v2/':''}${t}.stl`);
+ sources[t]=parseSTL(b.buffer.slice(b.byteOffset,b.byteOffset+b.byteLength),t);
+ assert.equal(sources[t].triangles,sourceTriangleCounts[t],`${t}: expected current source model`);
+ assert.deepEqual(sources[t].size.map(v=>Math.round(v*100)/100),[version==='v2'||t==='center'?8:7.9,version==='v3'&&t==='corner'?7.9:8,t==='center'?3.15:3.12]);
+ // Exterior trimming must not move the untrimmed seams off the 8 mm grid.
+ for(let axis=0;axis<2;axis++){
+   const values=sources[t].positions.filter((_,i)=>i%3===axis);
+   const expected=version==='v2'?[-4,4]:t==='corner'?(axis===0?[-4,3.9]:[-3.9,4]):t==='edge'&&axis===0?[-4,3.9]:[-4,4];
+   assert.ok(Math.abs(Math.min(...values)-expected[0])<1e-5&&Math.abs(Math.max(...values)-expected[1])<1e-5,`${t}: trimmed exterior must preserve internal seam alignment`);
+ }
 }
 // Sample the actual raised structure; a side is closed only if its wall is continuous.
 // Also check inward-facing corner recesses, not just total boundary triangle area.
@@ -52,7 +59,7 @@ for(const [r,c] of [[2,2],[2,4],[4,3],[3,4],[4,6],[6,6],[2,32],[32,2],[32,32]]){
   const height=rotatedHeight(part,dx*3.6,dy*3.6);
   assert.ok(height>=0.9&&height<1.1,`${r}x${c}: ${part.type} at ${part.r},${part.c} has a raised wall at an inner recess`);
  }
- const start=performance.now();const out=await unite(sources,r,c);assert.equal(out.components,1);const b=new DataView(out.buffer);assert.equal(out.buffer.byteLength,84+50*b.getUint32(80,true));const stl=parseSTL(out.buffer);assert.deepEqual(stl.size.map(v=>Math.round(v*100)/100),[c*8,r*8,r>2&&c>2?3.15:3.12]);
+ const start=performance.now();const out=await unite(sources,r,c,()=>{},version);assert.equal(out.components,1);const b=new DataView(out.buffer);assert.equal(out.buffer.byteLength,84+50*b.getUint32(80,true));const stl=parseSTL(out.buffer);assert.deepEqual(stl.size.map(v=>Math.round(v*100)/100),[c*8-(version==='v3'?.2:0),r*8-(version==='v3'?.2:0),r>2&&c>2?3.15:3.12]);
  // Check ALL sizes, including 32x32, for opposing edges (watertight, oriented mesh).
  // Numeric edge codes in a Float64Array avoid an enormous string-key Map.
  const m=indexedMesh(stl.positions),vertexCount=m.vertProperties.length/3,triangles=m.triVerts;
@@ -69,7 +76,8 @@ for(const [r,c] of [[2,2],[2,4],[4,3],[3,4],[4,6],[6,6],[2,32],[32,2],[32,32]]){
    if(edges[i]%2!==0||edges[i+1]!==edges[i]+1)
      assert.fail(`${r}x${c}: non-manifold or unoriented edge at sorted index ${i}`);
  }
- console.log(`${r}x${c}: ${out.triangles} triangles, single watertight solid, ${out.volume.toFixed(2)} mm³, ${Math.round(performance.now()-start)} ms`);
+ console.log(`${version} ${r}x${c}: ${out.triangles} triangles, single watertight solid, ${out.volume.toFixed(2)} mm³, ${Math.round(performance.now()-start)} ms`);
+}
 }
 for(const [value,delta,fallback,expected] of [['2.5',1,2,3],['2.5',-1,2,2],['4',1,2,5],['4',-1,2,3],['',1,4,5],['bad',-1,4,3],['32',1,2,32],['2',-1,2,2]])
  assert.equal(stepSize(value,delta,fallback),expected,`stepSize(${value},${delta})`);

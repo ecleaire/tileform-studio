@@ -1,5 +1,5 @@
 export const SETTINGS_KEY='tileform.settings.v1';
-export const DEFAULT_SETTINGS=Object.freeze({rows:2,cols:4,color:false,modelColor:'#d3d5d8',plateWidth:180,plateDepth:180,platePreset:'a1-mini'});
+export const DEFAULT_SETTINGS=Object.freeze({rows:2,cols:4,color:false,modelColor:'#d3d5d8',plateWidth:180,plateDepth:180,platePreset:'a1-mini',modelVersion:'v3'});
 export function readSettings(storage){
  try{
   const saved=JSON.parse(storage.getItem(SETTINGS_KEY));
@@ -10,6 +10,7 @@ export function readSettings(storage){
   if(typeof input.color==='boolean')result.color=input.color;
   if(typeof input.modelColor==='string'&&/^#[0-9a-f]{6}$/i.test(input.modelColor))result.modelColor=input.modelColor.toLowerCase();
   if(typeof input.platePreset==='string')result.platePreset=input.platePreset;
+  if(['v2','v3'].includes(input.modelVersion))result.modelVersion=input.modelVersion;
   return result;
  }catch{return {...DEFAULT_SETTINGS};}
 }
