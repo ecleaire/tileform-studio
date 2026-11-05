@@ -5,11 +5,11 @@ let value=null;const storage={getItem:()=>value,setItem:(key,input)=>{assert.equ
 assert.deepEqual(readSettings(storage),DEFAULT_SETTINGS);
 const state={...DEFAULT_SETTINGS,rows:6,cols:4,plateWidth:179.5,plateDepth:120,platePreset:'custom',modelColor:'#123456',color:true,explode:true,modelVersion:'v2',relief:false};
 assert.equal(writeSettings(storage,state),true);assert.deepEqual(readSettings(storage),Object.fromEntries(Object.keys(DEFAULT_SETTINGS).map(key=>[key,state[key]])));
-value=JSON.stringify({version:1,settings:{modelVersion:'bad'}});assert.equal(readSettings(storage).modelVersion,'v3.2');
+value=JSON.stringify({version:1,settings:{modelVersion:'bad'}});assert.equal(readSettings(storage).modelVersion,'v4');
 assert.equal(tileSpan(4,'v3.2'),31.8);assert.equal(tileSpan(4,'v2'),32);assert.throws(()=>tileSpan(4,'bad'));
 value=JSON.stringify({version:1,settings:{modelColor:'#D3D5D8'}});assert.equal(readSettings(storage).modelColor,'#adb4bc');
 value=JSON.stringify({version:1,settings:{modelColor:'#123456'}});assert.equal(readSettings(storage).modelColor,'#123456');
-for(const version of ['v2','v3.2'])for(let count=3;count<=32;count++){
+for(const version of ['v2','v3.2','v4'])for(let count=3;count<=32;count++){
  const exact=tileSpan(count,version);
  assert.deepEqual(maxTileSize(exact,exact,version),{rows:count,cols:count},`${version}: exact physical boundary ${exact}`);
  assert.equal(maxTileSize(exact-1e-7,exact,version).cols,count-1,`${version}: must not overrun bed`);
@@ -24,4 +24,7 @@ assert.deepEqual(maxTileSize(180,180),{rows:22,cols:22});assert.deepEqual(maxTil
 for(const [w,h] of [[0,180],[15.9,180],[1001,180],[NaN,180],[180,Infinity]])assert.throws(()=>maxTileSize(w,h));
 console.log('Settings and maximum-size checks passed.');
 
-for(const legacy of ['v3','v3.1']){value=JSON.stringify({version:1,settings:{modelVersion:legacy,rows:6,cols:8,modelColor:'#123456'}});const migrated=readSettings(storage);assert.equal(migrated.modelVersion,'v3.2');assert.equal(migrated.rows,6);assert.equal(migrated.cols,8);assert.equal(migrated.modelColor,'#123456');}
+for(const legacy of ['v3','v3.1','v3.2']){value=JSON.stringify({version:1,settings:{modelVersion:legacy,rows:6,cols:8,modelColor:'#123456'}});const migrated=readSettings(storage);assert.equal(migrated.modelVersion,'v4');assert.equal(migrated.rows,6);assert.equal(migrated.cols,8);assert.equal(migrated.modelColor,'#123456');}
+
+assert.equal(tileSpan(4,'v4'),31.2);assert.equal(tileSpan(2,'v4'),15.2);
+for(const selected of ['v4','v3.2','v2']){const state={...DEFAULT_SETTINGS,modelVersion:selected};assert.equal(writeSettings(storage,state),true);assert.equal(JSON.parse(value).version,2);assert.equal(readSettings(storage).modelVersion,selected);}

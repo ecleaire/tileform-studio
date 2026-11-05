@@ -1,11 +1,11 @@
 export const PITCH = 8;
 export const HEIGHT = 3.15;
 export const OUTER_INSET = 0.1;
-export function modelInset(version='v3.2'){
-  if(!['v2','v3.2'].includes(version))throw new Error('対応していないモデルです。');
-  return version==='v3.2'?OUTER_INSET:0;
+export function modelInset(version='v4'){
+  if(!['v2','v3.2','v4'].includes(version))throw new Error('対応していないモデルです。');
+  return version==='v4'?.4:version==='v3.2'?OUTER_INSET:0;
 }
-export const tileSpan = (count,version='v3.2') => Number((count * PITCH - 2 * modelInset(version)).toFixed(3));
+export const tileSpan = (count,version='v4') => Number((count * PITCH - 2 * modelInset(version)).toFixed(3));
 // Step to the next integer even if the input is temporarily fractional.
 export function stepSize(value, direction, fallback=2) {
   const current=typeof value==='string'&&value.trim()===''?NaN:Number(value);
@@ -13,7 +13,7 @@ export function stepSize(value, direction, fallback=2) {
   const next=direction>0?Math.floor(start)+1:Math.ceil(start)-1;
   return Math.max(2,Math.min(32,next));
 }
-export function maxTileSize(width,depth,version='v3.2'){
+export function maxTileSize(width,depth,version='v4'){
   if(![width,depth].every(n=>Number.isFinite(n)&&n>=16&&n<=1000))throw new Error('造形範囲は16〜1000 mmで指定してください。');
   const fit=length=>{
     let count=Math.min(32,Math.floor((length+2*modelInset(version))/PITCH));
@@ -39,16 +39,23 @@ export function placements(rows, cols) {
   }
   return parts;
 }
-export function parseSTL(buffer, sourceType) {
+export function parseSTL(buffer, sourceType, version='v4') {
   const d=new DataView(buffer),n=d.getUint32(80,true);
   if(buffer.byteLength!==84+n*50) throw new Error('対応していないSTL形式です。');
   const positions=new Float32Array(n*9),min=[Infinity,Infinity,Infinity],max=[-Infinity,-Infinity,-Infinity];
   for(let i=0;i<n;i++)for(let j=0;j<9;j++){const v=d.getFloat32(84+i*50+12+j*4,true);positions[i*9+j]=v;const k=j%3;min[k]=Math.min(min[k],v);max[k]=Math.max(max[k],v);}
   // v3 trims the corner's -Y exterior. Anchor its untrimmed +Y seam
   // to the 8 mm cell, preserving the 0.1 mm inset instead of shifting it inward.
+  const size=max.map((v,k)=>v-min[k]);
+  if(version==='v4'&&sourceType){
+    // v4 closes +Y (and +X for corners). Rotate -90 degrees around
+    // the unchanged 8 mm cell center, anchoring the internal seams.
+    for(let i=0;i<positions.length;i+=3){const x=positions[i]-min[0]-4,y=positions[i+1]-min[1]-4;positions[i]=y;positions[i+1]=-x;positions[i+2]-=min[2];}
+    return {positions,triangles:n,size:[size[1],size[0],size[2]]};
+  }
   const origin=[min[0],sourceType==='corner'?max[1]-PITCH:min[1],min[2]];
   for(let i=0;i<positions.length;i++)positions[i]=positions[i]-origin[i%3]-(i%3<2?4:0);
-  return {positions,triangles:n,size:max.map((v,k)=>v-min[k])};
+  return {positions,triangles:n,size};
 }
 export function indexedMesh(positions) {
   const map=new Map(),points=[],indices=[];

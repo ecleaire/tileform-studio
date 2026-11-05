@@ -1,12 +1,12 @@
-import './history-dialog.js?v=1.6.1';
+import './history-dialog.js?v=1.7.0';
 import * as THREE from 'three';
 import {OrbitControls} from './vendor/OrbitControls.js';
-import {placements,parseSTL,PITCH,HEIGHT,stepSize,maxTileSize,tileSpan} from './core.js?v=1.6.1';
-import {DEFAULT_SETTINGS,SETTINGS_KEY,readSettings,writeSettings} from './settings.js?v=1.6.1';
+import {placements,parseSTL,PITCH,HEIGHT,stepSize,maxTileSize,tileSpan} from './core.js?v=1.7.0';
+import {DEFAULT_SETTINGS,SETTINGS_KEY,readSettings,writeSettings} from './settings.js?v=1.7.0';
 const $=s=>document.querySelector(s),$$=s=>document.querySelectorAll(s);
 let restored;try{restored=readSettings(localStorage);}catch{restored={...DEFAULT_SETTINGS};}
 const state={...restored,explode:false,view:'iso'},sources={},geometries={},outlines={},materials={},meshes=[];
-const sourceSets={v2:{},'v3.2':{}},geometrySets={v2:{},'v3.2':{}},outlineSets={v2:{},'v3.2':{}};
+const sourceSets={v2:{},'v3.2':{},v4:{}},geometrySets={v2:{},'v3.2':{},v4:{}},outlineSets={v2:{},'v3.2':{},v4:{}};
 const span=count=>tileSpan(count,state.modelVersion);
 const platePresets=[
   ['a1-mini','Bambu Lab A1 mini',180,180],
@@ -112,7 +112,7 @@ function activateModel(){
 }
 function updateModelSelection(){
   $('#model-version').value=state.modelVersion;
-  $('#model-version-note').textContent=state.modelVersion==='v3.2'?'外周だけ各辺0.1 mm小さくなります。\n外寸：マス数×8−0.2 mm。\n角・端・中すべてv3.2。':'外周削減なし。\n外寸：マス数×8 mm。\n角・端・中すべてv2。';
+  $('#model-version-note').textContent=state.modelVersion==='v4'?'外周だけ各辺0.4 mm小さくなります。\n外寸：マス数×8−0.8 mm。\n角・端・中すべてv4。':state.modelVersion==='v3.2'?'外周だけ各辺0.1 mm小さくなります。\n外寸：マス数×8−0.2 mm。\n角・端・中すべてv3.2。':'外周削減なし。\n外寸：マス数×8 mm。\n角・端・中すべてv2。';
 }
 updateModelSelection();
 $('#model-version').onchange=()=>{
@@ -174,7 +174,7 @@ async function exportSTL(format='stl'){
   $('#export-progress').hidden=false;$('#export-cancel').hidden=false;showExportProgress({value:0,stage:'準備中'});$('#export-status').textContent='';
   try{
     const result=await new Promise((resolve,reject)=>{
-      job.reject=reject;job.worker=new Worker(new URL('./export-worker.js?v=1.6.1',import.meta.url),{type:'module'});
+      job.reject=reject;job.worker=new Worker(new URL('./export-worker.js?v=1.7.0',import.meta.url),{type:'module'});
       job.worker.onmessage=({data})=>{if(activeExport!==job)return;if(data.progress)showExportProgress(data.progress);if(data.error)reject(new Error(data.error));if(data.result)resolve(data.result);};
       job.worker.onerror=e=>reject(new Error(e.message||'出力処理を開始できませんでした。'));job.worker.postMessage({sources,rows,cols,modelVersion,format});
     });
@@ -225,10 +225,10 @@ $('#settings-reset').onclick=()=>{
   try{localStorage.removeItem(SETTINGS_KEY);}catch{}
 };
 try{
-  init();await Promise.all(['v3.2','v2'].flatMap(version=>['corner','edge','center'].map(async type=>{
-    const path=version==='v2'?'./assets/v2/':'./assets/';
-    const res=await fetch(path+type+'.stl?v=1.6.1');if(!res.ok)throw new Error('STLを読み込めませんでした。');
-    const source=parseSTL(await res.arrayBuffer(),type),g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(source.positions,3));g.computeVertexNormals();addReliefColors(g);
+  init();await Promise.all(['v4','v3.2','v2'].flatMap(version=>['corner','edge','center'].map(async type=>{
+    const path=version==='v4'?'./assets/':version==='v3.2'?'./assets/v3/':'./assets/v2/';
+    const res=await fetch(path+type+'.stl?v=1.7.0');if(!res.ok)throw new Error('STLを読み込めませんでした。');
+    const source=parseSTL(await res.arrayBuffer(),type,version),g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(source.positions,3));g.computeVertexNormals();addReliefColors(g);
     sourceSets[version][type]=source;geometrySets[version][type]=g;outlineSets[version][type]=new THREE.EdgesGeometry(g,30);
   })));
   for(const type of ['corner','edge','center'])materials[type]=new THREE.MeshStandardMaterial({color:colors[type],roughness:.7,metalness:0,vertexColors:state.relief,flatShading:true,side:THREE.DoubleSide});

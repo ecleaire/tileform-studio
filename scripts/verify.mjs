@@ -2,18 +2,18 @@ import fs from 'node:fs';
 import assert from 'node:assert/strict';
 import {placements,parseSTL,indexedMesh,stepSize} from '../dist/core.js';
 import {unite} from '../dist/solid.js';
-for(const version of ['v3.2','v2']){
+for(const version of ['v4','v3.2','v2']){
 const sources={};
-const sourceTriangleCounts={corner:version==='v3.2'?314:316,edge:528,center:version==='v3.2'?1000:1004};
+const sourceTriangleCounts={corner:version==='v3.2'?314:316,edge:version==='v4'?518:528,center:version==='v4'?988:version==='v3.2'?1000:1004};
 for(const t of ['corner','edge','center']){
- const b=fs.readFileSync(`dist/assets/${version==='v2'?'v2/':''}${t}.stl`);
- sources[t]=parseSTL(b.buffer.slice(b.byteOffset,b.byteOffset+b.byteLength),t);
+ const b=fs.readFileSync(`dist/assets/${version==='v4'?'':version==='v3.2'?'v3/':'v2/'}${t}.stl`);
+ sources[t]=parseSTL(b.buffer.slice(b.byteOffset,b.byteOffset+b.byteLength),t,version);
  assert.equal(sources[t].triangles,sourceTriangleCounts[t],`${t}: expected current source model`);
- assert.deepEqual(sources[t].size.map(v=>Math.round(v*100)/100),[version==='v2'||t==='center'?8:7.9,version==='v3.2'&&t==='corner'?7.9:8,t==='center'?3.15:3.12]);
+ assert.deepEqual(sources[t].size.map(v=>Math.round(v*100)/100),[version==='v2'||t==='center'?8:version==='v4'?7.6:7.9,(version!=='v2'&&t==='corner')?(version==='v4'?7.6:7.9):8,t==='center'?3.15:3.12]);
  // Exterior trimming must not move the untrimmed seams off the 8 mm grid.
  for(let axis=0;axis<2;axis++){
    const values=sources[t].positions.filter((_,i)=>i%3===axis);
-   const expected=version==='v2'?[-4,4]:t==='corner'?(axis===0?[-4,3.9]:[-3.9,4]):t==='edge'&&axis===0?[-4,3.9]:[-4,4];
+   const high=version==='v4'?3.6:3.9;const expected=version==='v2'?[-4,4]:t==='corner'?(axis===0?[-4,high]:[-high,4]):t==='edge'&&axis===0?[-4,high]:[-4,4];
    assert.ok(Math.abs(Math.min(...values)-expected[0])<1e-5&&Math.abs(Math.max(...values)-expected[1])<1e-5,`${t}: trimmed exterior must preserve internal seam alignment`);
  }
 }
@@ -35,7 +35,7 @@ function surfaceHeight(type,x,y){
  heightCache.set(key,height);return height;
 }
 for(const type of ['corner','edge']){
- closedWalls[type]=directions.filter(([nx,ny])=>[-3.5,-2,0,2,3.5].every(t=>surfaceHeight(type,nx?nx*3.9:t,ny?ny*3.9:t)>2.5));
+ closedWalls[type]=directions.filter(([nx,ny])=>[-3.5,-2,0,2,3.5].every(t=>surfaceHeight(type,nx?nx*(version==='v4'?3.5:3.9):t,ny?ny*(version==='v4'?3.5:3.9):t)>2.5));
  assert.equal(closedWalls[type].length,type==='corner'?2:1,`${type}: continuous outer walls must be identifiable`);
 }
 function rotatedHeight(part,x,y){
@@ -59,7 +59,7 @@ for(const [r,c] of [[2,2],[2,4],[4,3],[3,4],[4,6],[6,6],[2,32],[32,2],[32,32]]){
   const height=rotatedHeight(part,dx*3.6,dy*3.6);
   assert.ok(height>=0.9&&height<1.1,`${r}x${c}: ${part.type} at ${part.r},${part.c} has a raised wall at an inner recess`);
  }
- const start=performance.now();const out=await unite(sources,r,c,()=>{},version);assert.equal(out.components,1);const b=new DataView(out.buffer);assert.equal(out.buffer.byteLength,84+50*b.getUint32(80,true));const stl=parseSTL(out.buffer);assert.deepEqual(stl.size.map(v=>Math.round(v*100)/100),[c*8-(version==='v3.2'?.2:0),r*8-(version==='v3.2'?.2:0),r>2&&c>2?3.15:3.12]);
+ const start=performance.now();const out=await unite(sources,r,c,()=>{},version);assert.equal(out.components,1);const b=new DataView(out.buffer);assert.equal(out.buffer.byteLength,84+50*b.getUint32(80,true));const stl=parseSTL(out.buffer);assert.deepEqual(stl.size.map(v=>Math.round(v*100)/100),[c*8-(version==='v4'?.8:version==='v3.2'?.2:0),r*8-(version==='v4'?.8:version==='v3.2'?.2:0),r>2&&c>2?3.15:3.12]);
  // Check ALL sizes, including 32x32, for opposing edges (watertight, oriented mesh).
  // Numeric edge codes in a Float64Array avoid an enormous string-key Map.
  const m=indexedMesh(stl.positions),vertexCount=m.vertProperties.length/3,triangles=m.triVerts;
