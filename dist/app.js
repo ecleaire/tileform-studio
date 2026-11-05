@@ -1,12 +1,12 @@
-import './history-dialog.js?v=1.5.3';
+import './history-dialog.js?v=1.6.0';
 import * as THREE from 'three';
 import {OrbitControls} from './vendor/OrbitControls.js';
-import {placements,parseSTL,PITCH,HEIGHT,stepSize,maxTileSize,tileSpan} from './core.js?v=1.5.3';
-import {DEFAULT_SETTINGS,SETTINGS_KEY,readSettings,writeSettings} from './settings.js?v=1.5.3';
+import {placements,parseSTL,PITCH,HEIGHT,stepSize,maxTileSize,tileSpan} from './core.js?v=1.6.0';
+import {DEFAULT_SETTINGS,SETTINGS_KEY,readSettings,writeSettings} from './settings.js?v=1.6.0';
 const $=s=>document.querySelector(s),$$=s=>document.querySelectorAll(s);
 let restored;try{restored=readSettings(localStorage);}catch{restored={...DEFAULT_SETTINGS};}
 const state={...restored,explode:false,view:'iso'},sources={},geometries={},outlines={},materials={},meshes=[];
-const sourceSets={v2:{},v3:{}},geometrySets={v2:{},v3:{}},outlineSets={v2:{},v3:{}};
+const sourceSets={v2:{},'v3.2':{}},geometrySets={v2:{},'v3.2':{}},outlineSets={v2:{},'v3.2':{}};
 const span=count=>tileSpan(count,state.modelVersion);
 const platePresets=[
   ['a1-mini','Bambu Lab A1 mini',180,180],
@@ -108,11 +108,11 @@ $('#relief-toggle').onchange=e=>setRelief(e.target.checked);
 function activateModel(){
   // Keep source ordering stable regardless of network completion order.
   for(const type of ['corner','edge','center']){sources[type]=sourceSets[state.modelVersion][type];geometries[type]=geometrySets[state.modelVersion][type];outlines[type]=outlineSets[state.modelVersion][type];}
-  for(const type of ['corner','edge','center']){thumb(type);$('#thumb-'+type).parentElement.querySelector('.part-source').textContent=({corner:'角',edge:'端',center:'中'})[type]+(type==='center'?'v2':type==='corner'&&state.modelVersion==='v3'?'v3.1':state.modelVersion)+'.stl';}
+  for(const type of ['corner','edge','center']){thumb(type);$('#thumb-'+type).parentElement.querySelector('.part-source').textContent=({corner:'角',edge:'端',center:'中'})[type]+state.modelVersion+'.stl';}
 }
 function updateModelSelection(){
   $('#model-version').value=state.modelVersion;
-  $('#model-version-note').textContent=state.modelVersion==='v3'?'外周だけ各辺0.1 mm小さくなります。\n外寸：マス数×8−0.2 mm。\n角はv3.1・端はv3・中はv2。':'外周削減なし。\n外寸：マス数×8 mm。\n角・端・中すべてv2。';
+  $('#model-version-note').textContent=state.modelVersion==='v3.2'?'外周だけ各辺0.1 mm小さくなります。\n外寸：マス数×8−0.2 mm。\n角・端・中すべてv3.2。':'外周削減なし。\n外寸：マス数×8 mm。\n角・端・中すべてv2。';
 }
 updateModelSelection();
 $('#model-version').onchange=()=>{
@@ -174,7 +174,7 @@ async function exportSTL(format='stl'){
   $('#export-progress').hidden=false;$('#export-cancel').hidden=false;showExportProgress({value:0,stage:'準備中'});$('#export-status').textContent='';
   try{
     const result=await new Promise((resolve,reject)=>{
-      job.reject=reject;job.worker=new Worker(new URL('./export-worker.js?v=1.5.3',import.meta.url),{type:'module'});
+      job.reject=reject;job.worker=new Worker(new URL('./export-worker.js?v=1.6.0',import.meta.url),{type:'module'});
       job.worker.onmessage=({data})=>{if(activeExport!==job)return;if(data.progress)showExportProgress(data.progress);if(data.error)reject(new Error(data.error));if(data.result)resolve(data.result);};
       job.worker.onerror=e=>reject(new Error(e.message||'出力処理を開始できませんでした。'));job.worker.postMessage({sources,rows,cols,modelVersion,format});
     });
@@ -225,13 +225,12 @@ $('#settings-reset').onclick=()=>{
   try{localStorage.removeItem(SETTINGS_KEY);}catch{}
 };
 try{
-  init();await Promise.all(['v3','v2'].flatMap(version=>['corner','edge','center'].filter(type=>version==='v3'||type!=='center').map(async type=>{
+  init();await Promise.all(['v3.2','v2'].flatMap(version=>['corner','edge','center'].map(async type=>{
     const path=version==='v2'?'./assets/v2/':'./assets/';
-    const res=await fetch(path+type+'.stl?v=1.5.3');if(!res.ok)throw new Error('STLを読み込めませんでした。');
+    const res=await fetch(path+type+'.stl?v=1.6.0');if(!res.ok)throw new Error('STLを読み込めませんでした。');
     const source=parseSTL(await res.arrayBuffer(),type),g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(source.positions,3));g.computeVertexNormals();addReliefColors(g);
     sourceSets[version][type]=source;geometrySets[version][type]=g;outlineSets[version][type]=new THREE.EdgesGeometry(g,30);
   })));
-  sourceSets.v2.center=sourceSets.v3.center;geometrySets.v2.center=geometrySets.v3.center;outlineSets.v2.center=outlineSets.v3.center;
   for(const type of ['corner','edge','center'])materials[type]=new THREE.MeshStandardMaterial({color:colors[type],roughness:.7,metalness:0,vertexColors:state.relief,flatShading:true,side:THREE.DoubleSide});
   materials.single=new THREE.MeshStandardMaterial({color:state.modelColor,roughness:.7,vertexColors:state.relief,flatShading:true,side:THREE.DoubleSide});loaded=true;activateModel();applyInput();$('#loading').remove();
 }catch(e){$('#loading').textContent=`プレビューを開始できませんでした：${e.message}`;$('#model-status').textContent='読み込みエラー';console.error(e);}

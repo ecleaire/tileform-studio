@@ -1,8 +1,8 @@
 import Module from './vendor/manifold.js';
-import {indexedMesh,placements,binarySTL,HEIGHT,modelInset,tileSpan} from './core.js?v=1.5.3';
+import {indexedMesh,placements,binarySTL,HEIGHT,modelInset,tileSpan} from './core.js?v=1.6.0';
 let ready;
 export async function engine(){if(!ready)ready=Module().then(m=>{m.setup();return m});return ready;}
-export async function unite(sources,rows,cols,onProgress=()=>{},version='v3'){
+export async function unite(sources,rows,cols,onProgress=()=>{},version='v3.2'){
   const inset=modelInset(version);
   onProgress({value:0,stage:'計算エンジンを準備中'});
   const {Manifold,Mesh}=await engine(),base={},instances=[];

@@ -56,7 +56,7 @@ try{
       const response=await fetch(origin+'/?verify='+version,{signal:AbortSignal.timeout(10000),cache:'no-store'});
       return response.ok&&(await response.text()).includes('v'+version);
     },'published version '+version,180000);
-    for(const file of ['typography.css','changelog.html','changelog.css','history-dialog.js','history-dialog.css','formats.js','app.js','core.js','settings.js','export-worker.js','solid.js','style.css','assets/corner.stl','assets/edge.stl','assets/center.stl','assets/v2/corner.stl','assets/v2/edge.stl','vendor/manifold.wasm']){
+    for(const file of ['typography.css','changelog.html','changelog.css','history-dialog.js','history-dialog.css','formats.js','app.js','core.js','settings.js','export-worker.js','solid.js','style.css','assets/corner.stl','assets/edge.stl','assets/center.stl','assets/v2/corner.stl','assets/v2/edge.stl','assets/v2/center.stl','vendor/manifold.wasm']){
       const response=await fetch(origin+'/'+file+'?v='+version,{signal:AbortSignal.timeout(15000),cache:'no-store'});
       assert.equal(response.status,200,'published '+file);
       const digest=buffer=>createHash('sha256').update(buffer).digest('hex');
@@ -122,7 +122,7 @@ try{
   }
   await send('Page.navigate',{url:origin+'/?verify='+version});
   await poll(()=>evaluate("document.querySelector('#model-status')?.textContent.includes('自動配置済み') && !document.querySelector('#export')?.disabled"),'3D model initialized',45000);
-  if(!publicSite)assert.deepEqual(assetRequests.slice(3).sort(),['corner','edge','center','v2/corner','v2/edge'].map(type=>`/assets/${type}.stl?v=${version}`).sort(),'current app must bypass the warmed legacy model cache');
+  if(!publicSite)assert.deepEqual(assetRequests.slice(3).sort(),['corner','edge','center','v2/corner','v2/edge','v2/center'].map(type=>`/assets/${type}.stl?v=${version}`).sort(),'current app must bypass the warmed legacy model cache');
   async function verifyReadableText(){
     const small=await evaluate("[...document.querySelectorAll('body *')].filter(el=>el.childElementCount===0&&el.textContent.trim()&&el.getBoundingClientRect().width&&el.getBoundingClientRect().height&&!(el instanceof SVGElement)&&getComputedStyle(el).visibility!=='hidden').map(el=>({text:el.textContent.slice(0,60),size:parseFloat(getComputedStyle(el).fontSize)})).filter(item=>item.size<14)");
     assert.deepEqual(small,[],'visible text should be at least 14px');
@@ -138,10 +138,15 @@ try{
   await evaluate("document.querySelector('#parts-toggle').click()");
   assert.equal(await evaluate("getComputedStyle(document.querySelector('#parts-details')).display"),'none');
   assert.ok(await evaluate("parseFloat(getComputedStyle(document.querySelector('.step-heading')).fontSize)>=20 && document.querySelector('#export').getBoundingClientRect().height>=58"));
-  assert.equal(await evaluate("document.querySelector('#model-version').value"),'v3');
+  assert.equal(await evaluate("document.querySelector('#model-version').value"),'v3.2');
   assert.equal(await evaluate("document.querySelector('#relief-toggle').checked"),true);
   assert.equal(await evaluate("document.querySelector('#other-formats').open"),false);
   assert.equal(await evaluate("(()=>{const title=document.querySelector('.inspector .step-heading').getBoundingClientRect(),unit=document.querySelector('.inspector .unit-tag').getBoundingClientRect();return unit.top>=title.bottom || unit.left>=title.right+4;})()"),true,'desktop heading and unit must be separated');
+  await evaluate("localStorage.setItem('tileform.settings.v1',JSON.stringify({version:1,settings:{modelVersion:'v3',rows:2,cols:4}}))");
+  await reloadReady('legacy v3 automatically upgrades to v3.2');
+  assert.equal(await evaluate("document.querySelector('#model-version').value"),'v3.2');
+  assert.deepEqual(await evaluate("[...document.querySelectorAll('#model-version option')].map(el=>el.value)"),['v3.2','v2']);
+  assert.deepEqual(await evaluate("[...document.querySelectorAll('.part-source')].map(el=>el.textContent)"),['角v3.2.stl','端v3.2.stl','中v3.2.stl']);
   // The v3 clearance must increase capacity exactly at a physical-size boundary.
   await evaluate("for(const [id,value] of [['plate-width','31.8'],['plate-depth','47.8']]){const el=document.querySelector('#'+id);el.value=value;el.dispatchEvent(new Event('input'));}document.querySelector('#plate-max').click()");
   assert.deepEqual(await evaluate("[document.querySelector('#rows').value,document.querySelector('#cols').value]"),['6','4']);
@@ -218,12 +223,12 @@ try{
   assert.equal(await evaluate("document.querySelector('#export-progressbar').value"),1);
   const output=await evaluate("(async()=>{const buffer=await window.__lastExport.arrayBuffer(),view=new DataView(buffer),n=view.getUint32(80,true),min=[Infinity,Infinity,Infinity],max=[-Infinity,-Infinity,-Infinity];for(let i=0;i<n;i++)for(let j=0;j<9;j++){const x=view.getFloat32(84+i*50+12+j*4,true),axis=j%3;min[axis]=Math.min(min[axis],x);max[axis]=Math.max(max[axis],x);}return {valid:buffer.byteLength===84+50*n,n,size:max.map((v,i)=>Math.round((v-min[i])*100)/100)};})()");
   assert.ok(output.valid&&output.n>0);assert.deepEqual(output.size,[31.8,15.8,3.12]);
-  assert.equal(await evaluate("window.__lastFilename"),'tileform_v3_2x4.stl');
+  assert.equal(await evaluate("window.__lastFilename"),'tileform_v3.2_2x4.stl');
   await evaluate("document.querySelector('#other-formats').open=true");
   for(const format of ['obj','glb']){
     await evaluate(`window.__lastModelBlob=null;document.querySelector('[data-export-format="${format}"]').click()`);
     await poll(()=>evaluate("window.__lastModelBlob!=null && !document.querySelector('#export').disabled"),'export '+format,90000);
-    assert.equal(await evaluate("window.__lastFilename"),'tileform_v3_2x4.'+format);
+    assert.equal(await evaluate("window.__lastFilename"),'tileform_v3.2_2x4.'+format);
     const exported=await evaluate("(async()=>{const b=window.__lastModelBlob;return {type:b.type,size:b.size,head:[...new Uint8Array(await b.slice(0,4).arrayBuffer())],text:b.type==='text/plain'?(await b.text()).slice(0,100):''};})()");
     assert.ok(exported.size>1000);
     if(format==='glb'){assert.equal(exported.type,'model/gltf-binary');assert.deepEqual(exported.head,[103,108,84,70]);}
@@ -252,7 +257,7 @@ try{
 
   await evaluate("{const el=document.querySelector('#explode-toggle');el.checked=true;el.dispatchEvent(new Event('change'));}document.querySelector('[data-view=\"bottom\"]').click();document.querySelector('#settings-reset').click()");
   assert.equal(await evaluate("document.querySelector('#explode-toggle').checked"),false);
-  assert.equal(await evaluate("document.querySelector('#model-version').value"),'v3');
+  assert.equal(await evaluate("document.querySelector('#model-version').value"),'v3.2');
   assert.equal(await evaluate("document.querySelector('[data-view].active').dataset.view"),'iso');
 
   assert.equal(await evaluate("document.querySelector('#project-name').textContent"),'Tile_2×4');
@@ -308,7 +313,7 @@ try{
   }
   const beforeHistory=await evaluate("({url:location.href,name:document.querySelector('#project-name').textContent,scroll:document.querySelector('#help').scrollTop})");
   await evaluate("document.querySelector('.help-history a').click()");
-  await poll(()=>evaluate("document.querySelector('#history-dialog').open && document.querySelectorAll('#history-dialog .release').length===13"),'history popup');
+  await poll(()=>evaluate("document.querySelector('#history-dialog').open && document.querySelectorAll('#history-dialog .release').length===14"),'history popup');
   assert.equal(await evaluate("document.querySelector('#help').open"),false);
   assert.equal(await evaluate("location.href"),beforeHistory.url);
   assert.equal(await evaluate("document.querySelector('#project-name').textContent"),beforeHistory.name);
@@ -326,7 +331,7 @@ try{
   await send('Input.dispatchKeyEvent',{type:'keyUp',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
   await poll(()=>evaluate("document.querySelector('#help').open && !document.querySelector('#history-dialog').open"),'escape returns to help');
   await send('Page.navigate',{url:origin+'/changelog.html'});
-  await poll(()=>evaluate("document.querySelectorAll('.release').length===13"),'release history');
+  await poll(()=>evaluate("document.querySelectorAll('.release').length===14"),'release history');
   assert.equal(await evaluate("document.querySelector('.release-version').textContent"),'v'+version);
   assert.equal(await evaluate("[...document.querySelectorAll('time')].every(t=>!Number.isNaN(Date.parse(t.dateTime))&&/\\d{4}\\/\\d{2}\\/\\d{2} \\d{2}:\\d{2}/.test(t.textContent))"),true);
   for(const width of [320,390,1280]){

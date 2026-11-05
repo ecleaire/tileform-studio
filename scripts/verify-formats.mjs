@@ -3,10 +3,10 @@ import assert from 'node:assert/strict';
 import {parseSTL} from '../dist/core.js';
 import {unite} from '../dist/solid.js';
 import {encodeModel} from '../dist/formats.js';
-for(const version of ['v3','v2'])for(const [rows,cols] of [[2,4],[4,6]]){
+for(const version of ['v3.2','v2'])for(const [rows,cols] of [[2,4],[4,6]]){
   const sources={};
   for(const type of ['corner','edge','center']){
-    const bytes=fs.readFileSync(`dist/assets/${version==='v2'&&type!=='center'?'v2/':''}${type}.stl`);
+    const bytes=fs.readFileSync(`dist/assets/${version==='v2'?'v2/':''}${type}.stl`);
     sources[type]=parseSTL(bytes.buffer.slice(bytes.byteOffset,bytes.byteOffset+bytes.byteLength),type);
   }
   const {buffer,triangles}=await unite(sources,rows,cols,()=>{},version),stl=new DataView(buffer);

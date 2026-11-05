@@ -1,5 +1,5 @@
-import {unite} from './solid.js?v=1.5.3';
-import {encodeModel,FORMATS} from './formats.js?v=1.5.3';
+import {unite} from './solid.js?v=1.6.0';
+import {encodeModel,FORMATS} from './formats.js?v=1.6.0';
 self.onmessage=async({data})=>{try{
   const format=data.format||'stl';if(!Object.hasOwn(FORMATS,format))throw Error('未対応の出力形式です。');
   const result=await unite(data.sources,data.rows,data.cols,progress=>self.postMessage({progress:{...progress,value:Math.min(.94,progress.value),stage:progress.stage==='STLデータを作成中'?'結合データを作成中':progress.stage}}),data.modelVersion);

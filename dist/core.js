@@ -1,11 +1,11 @@
 export const PITCH = 8;
 export const HEIGHT = 3.15;
 export const OUTER_INSET = 0.1;
-export function modelInset(version='v3'){
-  if(!['v2','v3'].includes(version))throw new Error('対応していないモデルです。');
-  return version==='v3'?OUTER_INSET:0;
+export function modelInset(version='v3.2'){
+  if(!['v2','v3.2'].includes(version))throw new Error('対応していないモデルです。');
+  return version==='v3.2'?OUTER_INSET:0;
 }
-export const tileSpan = (count,version='v3') => Number((count * PITCH - 2 * modelInset(version)).toFixed(3));
+export const tileSpan = (count,version='v3.2') => Number((count * PITCH - 2 * modelInset(version)).toFixed(3));
 // Step to the next integer even if the input is temporarily fractional.
 export function stepSize(value, direction, fallback=2) {
   const current=typeof value==='string'&&value.trim()===''?NaN:Number(value);
@@ -13,7 +13,7 @@ export function stepSize(value, direction, fallback=2) {
   const next=direction>0?Math.floor(start)+1:Math.ceil(start)-1;
   return Math.max(2,Math.min(32,next));
 }
-export function maxTileSize(width,depth,version='v3'){
+export function maxTileSize(width,depth,version='v3.2'){
   if(![width,depth].every(n=>Number.isFinite(n)&&n>=16&&n<=1000))throw new Error('造形範囲は16〜1000 mmで指定してください。');
   const fit=length=>{
     let count=Math.min(32,Math.floor((length+2*modelInset(version))/PITCH));
