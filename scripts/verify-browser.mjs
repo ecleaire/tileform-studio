@@ -325,7 +325,7 @@ try{
     await send('Emulation.setDeviceMetricsOverride',{width,height:844,deviceScaleFactor:1,mobile:width<760});
     await verifyReadableText();
   }
-  assert.equal(await evaluate("document.querySelectorAll('#upcoming li').length"),5);
+  assert.equal(await evaluate("document.querySelectorAll('#upcoming li').length"),6);
   assert.equal(await evaluate("document.querySelector('.back-link').getAttribute('href')"),'./');
   console.log('Browser smoke checks passed (desktop and mobile): asset version consistency, preview orientation, startup, presets, maximum size, persisted custom selection, full reset, visible mobile labels, unavailable storage, progress, cancellation and restart, binary STL export');
 }catch(error){
