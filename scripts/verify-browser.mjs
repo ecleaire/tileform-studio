@@ -56,7 +56,7 @@ try{
       const response=await fetch(origin+'/?verify='+version,{signal:AbortSignal.timeout(10000),cache:'no-store'});
       return response.ok&&(await response.text()).includes('v'+version);
     },'published version '+version,180000);
-    for(const file of ['changelog.html','changelog.css','app.js','core.js','settings.js','export-worker.js','solid.js','style.css','assets/corner.stl','assets/edge.stl','assets/center.stl','assets/v2/corner.stl','assets/v2/edge.stl','vendor/manifold.wasm']){
+    for(const file of ['changelog.html','changelog.css','history-dialog.js','history-dialog.css','formats.js','app.js','core.js','settings.js','export-worker.js','solid.js','style.css','assets/corner.stl','assets/edge.stl','assets/center.stl','assets/v2/corner.stl','assets/v2/edge.stl','vendor/manifold.wasm']){
       const response=await fetch(origin+'/'+file+'?v='+version,{signal:AbortSignal.timeout(15000),cache:'no-store'});
       assert.equal(response.status,200,'published '+file);
       const digest=buffer=>createHash('sha256').update(buffer).digest('hex');
@@ -99,7 +99,7 @@ try{
   await send('Page.addScriptToEvaluateOnNewDocument',{source:`
     document.addEventListener('click',event=>{if(event.target instanceof HTMLAnchorElement && event.target.download)window.__lastFilename=event.target.download;},true);
     const createObjectURL=URL.createObjectURL.bind(URL);
-    URL.createObjectURL=blob=>{if(blob.type==='model/stl')window.__lastExport=blob;return createObjectURL(blob);};
+    URL.createObjectURL=blob=>{if(blob.type==='model/stl')window.__lastExport=blob;if(['model/stl','text/plain','model/gltf-binary'].includes(blob.type))window.__lastModelBlob=blob;return createObjectURL(blob);};
     window.__tileformScenes=[];window.__THREE_DEVTOOLS__=new EventTarget();
     window.__THREE_DEVTOOLS__.addEventListener('observe',event=>{
       if(!event.detail.isScene)return;
@@ -131,8 +131,16 @@ try{
   await verifyReadableText();
   const initial=await evaluate("({rows:document.querySelector('#rows').value,cols:document.querySelector('#cols').value,preset:document.querySelector('[data-size].active')?.dataset.size,closed:[...document.querySelectorAll('.collapsible-section')].every(x=>!x.open)})");
   assert.deepEqual(initial,{rows:'2',cols:'4',preset:'2,4',closed:true});
+  assert.equal(await evaluate("getComputedStyle(document.querySelector('#parts-details')).display"),'none');
+  await evaluate("document.querySelector('#parts-toggle').click()");
+  assert.equal(await evaluate("document.querySelector('#parts-toggle').getAttribute('aria-expanded')"),'true');
+  assert.notEqual(await evaluate("getComputedStyle(document.querySelector('#parts-details')).display"),'none');
+  await evaluate("document.querySelector('#parts-toggle').click()");
+  assert.equal(await evaluate("getComputedStyle(document.querySelector('#parts-details')).display"),'none');
+  assert.ok(await evaluate("parseFloat(getComputedStyle(document.querySelector('.step-heading')).fontSize)>=20 && document.querySelector('#export').getBoundingClientRect().height>=58"));
   assert.equal(await evaluate("document.querySelector('#model-version').value"),'v3');
   assert.equal(await evaluate("document.querySelector('#relief-toggle').checked"),true);
+  assert.equal(await evaluate("document.querySelector('#other-formats').open"),false);
   // The v3 clearance must increase capacity exactly at a physical-size boundary.
   await evaluate("for(const [id,value] of [['plate-width','31.8'],['plate-depth','47.8']]){const el=document.querySelector('#'+id);el.value=value;el.dispatchEvent(new Event('input'));}document.querySelector('#plate-max').click()");
   assert.deepEqual(await evaluate("[document.querySelector('#rows').value,document.querySelector('#cols').value]"),['6','4']);
@@ -210,6 +218,17 @@ try{
   const output=await evaluate("(async()=>{const buffer=await window.__lastExport.arrayBuffer(),view=new DataView(buffer),n=view.getUint32(80,true),min=[Infinity,Infinity,Infinity],max=[-Infinity,-Infinity,-Infinity];for(let i=0;i<n;i++)for(let j=0;j<9;j++){const x=view.getFloat32(84+i*50+12+j*4,true),axis=j%3;min[axis]=Math.min(min[axis],x);max[axis]=Math.max(max[axis],x);}return {valid:buffer.byteLength===84+50*n,n,size:max.map((v,i)=>Math.round((v-min[i])*100)/100)};})()");
   assert.ok(output.valid&&output.n>0);assert.deepEqual(output.size,[31.8,15.8,3.12]);
   assert.equal(await evaluate("window.__lastFilename"),'tileform_v3_2x4.stl');
+  await evaluate("document.querySelector('#other-formats').open=true");
+  for(const format of ['obj','glb']){
+    await evaluate(`window.__lastModelBlob=null;document.querySelector('[data-export-format="${format}"]').click()`);
+    await poll(()=>evaluate("window.__lastModelBlob!=null && !document.querySelector('#export').disabled"),'export '+format,90000);
+    assert.equal(await evaluate("window.__lastFilename"),'tileform_v3_2x4.'+format);
+    const exported=await evaluate("(async()=>{const b=window.__lastModelBlob;return {type:b.type,size:b.size,head:[...new Uint8Array(await b.slice(0,4).arrayBuffer())],text:b.type==='text/plain'?(await b.text()).slice(0,100):''};})()");
+    assert.ok(exported.size>1000);
+    if(format==='glb'){assert.equal(exported.type,'model/gltf-binary');assert.deepEqual(exported.head,[103,108,84,70]);}
+    else {assert.equal(exported.type,'text/plain');assert.ok(exported.text.includes('units: millimeters'));}
+  }
+  await evaluate("document.querySelector('#other-formats').open=false");
   const reliefHash=await evaluate("(async()=>[...new Uint8Array(await crypto.subtle.digest('SHA-256',await window.__lastExport.arrayBuffer()))].map(x=>x.toString(16).padStart(2,'0')).join(''))()");
   await evaluate("document.querySelector('#relief-toggle').checked=false;document.querySelector('#relief-toggle').dispatchEvent(new Event('change'))");
   await reloadReady('relief preference restored');
@@ -280,8 +299,26 @@ try{
   assert.equal(await evaluate("document.querySelector('.settings-storage #settings-note')===null && document.querySelector('#help #settings-note')!==null"),true);
   await evaluate("document.querySelector('#help-open').click()");
   assert.equal(await evaluate("document.querySelector('#help section:last-child a').getAttribute('href')"),'./changelog.html');
+  const beforeHistory=await evaluate("({url:location.href,name:document.querySelector('#project-name').textContent,scroll:document.querySelector('#help').scrollTop})");
+  await evaluate("document.querySelector('.help-history a').click()");
+  await poll(()=>evaluate("document.querySelector('#history-dialog').open && document.querySelectorAll('#history-dialog .release').length===12"),'history popup');
+  assert.equal(await evaluate("document.querySelector('#help').open"),false);
+  assert.equal(await evaluate("location.href"),beforeHistory.url);
+  assert.equal(await evaluate("document.querySelector('#project-name').textContent"),beforeHistory.name);
+  for(const width of [320,390,1280]){
+    await send('Emulation.setDeviceMetricsOverride',{width,height:844,deviceScaleFactor:1,mobile:width<760});
+    await verifyReadableText();
+    assert.equal(await evaluate("document.querySelector('#history-dialog').scrollWidth<=document.querySelector('#history-dialog').clientWidth+1"),true);
+  }
+  await evaluate("document.querySelector('#history-close').click()");
+  await poll(()=>evaluate("document.querySelector('#help').open && !document.querySelector('#history-dialog').open"),'return to help');
+  assert.equal(await evaluate("document.activeElement===document.querySelector('.help-history a')"),true);
+  await evaluate("document.querySelector('.help-history a').click()");
+  await send('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
+  await send('Input.dispatchKeyEvent',{type:'keyUp',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
+  await poll(()=>evaluate("document.querySelector('#help').open && !document.querySelector('#history-dialog').open"),'escape returns to help');
   await send('Page.navigate',{url:origin+'/changelog.html'});
-  await poll(()=>evaluate("document.querySelectorAll('.release').length===11"),'release history');
+  await poll(()=>evaluate("document.querySelectorAll('.release').length===12"),'release history');
   assert.equal(await evaluate("document.querySelector('.release-version').textContent"),'v'+version);
   assert.equal(await evaluate("[...document.querySelectorAll('time')].every(t=>!Number.isNaN(Date.parse(t.dateTime))&&/\\d{4}\\/\\d{2}\\/\\d{2} \\d{2}:\\d{2}/.test(t.textContent))"),true);
   for(const width of [320,390,1280]){

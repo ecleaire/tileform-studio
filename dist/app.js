@@ -1,7 +1,8 @@
+import './history-dialog.js?v=1.5.2';
 import * as THREE from 'three';
 import {OrbitControls} from './vendor/OrbitControls.js';
-import {placements,parseSTL,PITCH,HEIGHT,stepSize,maxTileSize,tileSpan} from './core.js?v=1.5.1';
-import {DEFAULT_SETTINGS,SETTINGS_KEY,readSettings,writeSettings} from './settings.js?v=1.5.1';
+import {placements,parseSTL,PITCH,HEIGHT,stepSize,maxTileSize,tileSpan} from './core.js?v=1.5.2';
+import {DEFAULT_SETTINGS,SETTINGS_KEY,readSettings,writeSettings} from './settings.js?v=1.5.2';
 const $=s=>document.querySelector(s),$$=s=>document.querySelectorAll(s);
 let restored;try{restored=readSettings(localStorage);}catch{restored={...DEFAULT_SETTINGS};}
 const state={...restored,explode:false,view:'iso'},sources={},geometries={},outlines={},materials={},meshes=[];
@@ -159,25 +160,25 @@ $('#plate-max').onclick=()=>{
 };
 $('#plate-preset').onchange=e=>{const preset=platePresets.find(p=>p[0]===e.target.value);if(preset){$('#plate-width').value=preset[2];$('#plate-depth').value=preset[3];}applyPlateInput();};
 $$('#plate-width,#plate-depth').forEach(input=>input.addEventListener('input',()=>{$('#plate-preset').value='custom';applyPlateInput();}));
-function applyInput(){const rows=Number($('#rows').value),cols=Number($('#cols').value);try{placements(rows,cols);$('#input-error').textContent='';state.rows=rows;state.cols=cols;saveSettings();if(loaded){assemble();fit();}$('#export').disabled=!loaded||busy;}catch(e){$('#input-error').textContent=e.message;$('#export').disabled=true;}}
+function applyInput(){const rows=Number($('#rows').value),cols=Number($('#cols').value);try{placements(rows,cols);$('#input-error').textContent='';state.rows=rows;state.cols=cols;saveSettings();if(loaded){assemble();fit();}$$('#export,[data-export-format]').forEach(el=>{el.disabled=!loaded||busy;});}catch(e){$('#input-error').textContent=e.message;$$('#export,[data-export-format]').forEach(el=>{el.disabled=true;});}}
 function setSizeInputLocked(locked){$$('#rows,#cols,.stepper button,[data-size],#plate-max,#settings-reset,#model-version').forEach(el=>{el.disabled=locked;});$('#plate-max').disabled=locked||Boolean($('#plate-error').textContent);}
 function showExportProgress(progress){
   const value=Math.max(0,Math.min(1,progress.value));
   $('#export-progressbar').value=value;$('#export-phase').textContent=`${progress.stage} · ${Math.round(value*100)}%`;
 }
 $('#export-cancel').onclick=()=>{const job=activeExport;if(!job)return;activeExport=null;job.worker?.terminate();job.reject?.(new DOMException('出力をキャンセルしました。','AbortError'));};
-async function exportSTL(){
+async function exportSTL(format='stl'){
   if(busy||!loaded)return;
   busy=true;const rows=state.rows,cols=state.cols,modelVersion=state.modelVersion,job={worker:null,reject:null};activeExport=job;
-  setSizeInputLocked(true);$('#export').disabled=true;$('#export span').textContent='一体化しています…';
+  setSizeInputLocked(true);$$('#export,[data-export-format]').forEach(el=>{el.disabled=true;});$('#export span').textContent='一体化しています…';
   $('#export-progress').hidden=false;$('#export-cancel').hidden=false;showExportProgress({value:0,stage:'準備中'});$('#export-status').textContent='';
   try{
     const result=await new Promise((resolve,reject)=>{
-      job.reject=reject;job.worker=new Worker(new URL('./export-worker.js?v=1.5.1',import.meta.url),{type:'module'});
+      job.reject=reject;job.worker=new Worker(new URL('./export-worker.js?v=1.5.2',import.meta.url),{type:'module'});
       job.worker.onmessage=({data})=>{if(activeExport!==job)return;if(data.progress)showExportProgress(data.progress);if(data.error)reject(new Error(data.error));if(data.result)resolve(data.result);};
-      job.worker.onerror=e=>reject(new Error(e.message||'出力処理を開始できませんでした。'));job.worker.postMessage({sources,rows,cols,modelVersion});
+      job.worker.onerror=e=>reject(new Error(e.message||'出力処理を開始できませんでした。'));job.worker.postMessage({sources,rows,cols,modelVersion,format});
     });
-    const blob=new Blob([result.buffer],{type:'model/stl'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`tileform_${modelVersion}_${rows}x${cols}.stl`;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);
+    const blob=new Blob([result.buffer],{type:result.mime}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`tileform_${modelVersion}_${rows}x${cols}.${format}`;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);
     showExportProgress({value:1,stage:'完了'});$('#export-status').textContent=`保存しました · ${result.triangles.toLocaleString()}面 · 単一ソリッド · ${(blob.size/1024).toFixed(0)} KB`;
   }catch(e){
     if(e.name==='AbortError'){$('#export-phase').textContent='キャンセルしました';$('#export-status').textContent='出力をキャンセルしました。サイズを変えて再実行できます。';}
@@ -216,7 +217,7 @@ $$('.rgb-inputs input').forEach(input=>input.addEventListener('input',()=>{
 }));
 $$('[data-color]').forEach(button=>button.onclick=()=>setModelColor(button.dataset.color));
 setModelColor(state.modelColor);
-$('#color-toggle').onchange=e=>{state.color=e.target.checked;saveSettings();for(const m of meshes)m.material=state.color?materials[m.userData.type]:materials.single;};$('#explode-toggle').onchange=e=>{state.explode=e.target.checked;if(loaded){assemble();fit();}};$$('[data-view]').forEach(b=>b.onclick=()=>{if(loaded)setView(b.dataset.view);});$('#fit').onclick=()=>{if(loaded)fit();};$('#zoom-in').onclick=()=>{if(camera){camera.zoom=Math.min(10,camera.zoom*1.2);camera.updateProjectionMatrix();updateLabelScales();}};$('#zoom-out').onclick=()=>{if(camera){camera.zoom=Math.max(.2,camera.zoom/1.2);camera.updateProjectionMatrix();updateLabelScales();}};$('#export').onclick=exportSTL;
+$('#color-toggle').onchange=e=>{state.color=e.target.checked;saveSettings();for(const m of meshes)m.material=state.color?materials[m.userData.type]:materials.single;};$('#explode-toggle').onchange=e=>{state.explode=e.target.checked;if(loaded){assemble();fit();}};$$('[data-view]').forEach(b=>b.onclick=()=>{if(loaded)setView(b.dataset.view);});$('#fit').onclick=()=>{if(loaded)fit();};$('#zoom-in').onclick=()=>{if(camera){camera.zoom=Math.min(10,camera.zoom*1.2);camera.updateProjectionMatrix();updateLabelScales();}};$('#zoom-out').onclick=()=>{if(camera){camera.zoom=Math.max(.2,camera.zoom/1.2);camera.updateProjectionMatrix();updateLabelScales();}};$('#export').onclick=()=>exportSTL('stl');$$('[data-export-format]').forEach(button=>button.onclick=()=>exportSTL(button.dataset.exportFormat));
 $('#settings-reset').onclick=()=>{
   if(busy)return;Object.assign(state,DEFAULT_SETTINGS,{explode:false,view:'iso'});
   $('#rows').value=state.rows;$('#cols').value=state.cols;$('#plate-width').value=state.plateWidth;$('#plate-depth').value=state.plateDepth;$('#plate-preset').value=state.platePreset;$('#color-toggle').checked=false;$('#explode-toggle').checked=false;
@@ -226,7 +227,7 @@ $('#settings-reset').onclick=()=>{
 try{
   init();await Promise.all(['v3','v2'].flatMap(version=>['corner','edge','center'].filter(type=>version==='v3'||type!=='center').map(async type=>{
     const path=version==='v2'?'./assets/v2/':'./assets/';
-    const res=await fetch(path+type+'.stl?v=1.5.1');if(!res.ok)throw new Error('STLを読み込めませんでした。');
+    const res=await fetch(path+type+'.stl?v=1.5.2');if(!res.ok)throw new Error('STLを読み込めませんでした。');
     const source=parseSTL(await res.arrayBuffer(),type),g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(source.positions,3));g.computeVertexNormals();addReliefColors(g);
     sourceSets[version][type]=source;geometrySets[version][type]=g;outlineSets[version][type]=new THREE.EdgesGeometry(g,30);
   })));

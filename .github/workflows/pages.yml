@@ -25,6 +25,8 @@ jobs:
         run: node scripts/verify-settings.mjs
       - name: Verify printable geometry
         run: node scripts/verify.mjs
+      - name: Verify OBJ and GLB exports
+        run: node scripts/verify-formats.mjs
       - name: Verify browser interactions
         run: node scripts/verify-browser.mjs
       - uses: actions/configure-pages@v5
