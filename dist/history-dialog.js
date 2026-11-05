@@ -7,7 +7,7 @@ link.addEventListener('click',async event=>{
   content.setAttribute('aria-busy','true');
   content.innerHTML='<span class="eyebrow">UPDATE HISTORY</span><h2 id="history-title">バージョンアップ履歴</h2><p role="status">履歴を読み込んでいます…</p>';
   try{
-    const response=await fetch('./changelog.html?v=1.6.0');
+    const response=await fetch('./changelog.html?v=1.6.1');
     if(!response.ok)throw Error('history unavailable');
     const source=new DOMParser().parseFromString(await response.text(),'text/html').querySelector('main');
     if(!source?.querySelector('.release-list'))throw Error('invalid history');

@@ -1,8 +1,8 @@
-import './history-dialog.js?v=1.6.0';
+import './history-dialog.js?v=1.6.1';
 import * as THREE from 'three';
 import {OrbitControls} from './vendor/OrbitControls.js';
-import {placements,parseSTL,PITCH,HEIGHT,stepSize,maxTileSize,tileSpan} from './core.js?v=1.6.0';
-import {DEFAULT_SETTINGS,SETTINGS_KEY,readSettings,writeSettings} from './settings.js?v=1.6.0';
+import {placements,parseSTL,PITCH,HEIGHT,stepSize,maxTileSize,tileSpan} from './core.js?v=1.6.1';
+import {DEFAULT_SETTINGS,SETTINGS_KEY,readSettings,writeSettings} from './settings.js?v=1.6.1';
 const $=s=>document.querySelector(s),$$=s=>document.querySelectorAll(s);
 let restored;try{restored=readSettings(localStorage);}catch{restored={...DEFAULT_SETTINGS};}
 const state={...restored,explode:false,view:'iso'},sources={},geometries={},outlines={},materials={},meshes=[];
@@ -174,7 +174,7 @@ async function exportSTL(format='stl'){
   $('#export-progress').hidden=false;$('#export-cancel').hidden=false;showExportProgress({value:0,stage:'準備中'});$('#export-status').textContent='';
   try{
     const result=await new Promise((resolve,reject)=>{
-      job.reject=reject;job.worker=new Worker(new URL('./export-worker.js?v=1.6.0',import.meta.url),{type:'module'});
+      job.reject=reject;job.worker=new Worker(new URL('./export-worker.js?v=1.6.1',import.meta.url),{type:'module'});
       job.worker.onmessage=({data})=>{if(activeExport!==job)return;if(data.progress)showExportProgress(data.progress);if(data.error)reject(new Error(data.error));if(data.result)resolve(data.result);};
       job.worker.onerror=e=>reject(new Error(e.message||'出力処理を開始できませんでした。'));job.worker.postMessage({sources,rows,cols,modelVersion,format});
     });
@@ -227,7 +227,7 @@ $('#settings-reset').onclick=()=>{
 try{
   init();await Promise.all(['v3.2','v2'].flatMap(version=>['corner','edge','center'].map(async type=>{
     const path=version==='v2'?'./assets/v2/':'./assets/';
-    const res=await fetch(path+type+'.stl?v=1.6.0');if(!res.ok)throw new Error('STLを読み込めませんでした。');
+    const res=await fetch(path+type+'.stl?v=1.6.1');if(!res.ok)throw new Error('STLを読み込めませんでした。');
     const source=parseSTL(await res.arrayBuffer(),type),g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(source.positions,3));g.computeVertexNormals();addReliefColors(g);
     sourceSets[version][type]=source;geometrySets[version][type]=g;outlineSets[version][type]=new THREE.EdgesGeometry(g,30);
   })));
