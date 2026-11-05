@@ -56,7 +56,7 @@ try{
       const response=await fetch(origin+'/?verify='+version,{signal:AbortSignal.timeout(10000),cache:'no-store'});
       return response.ok&&(await response.text()).includes('v'+version);
     },'published version '+version,180000);
-    for(const file of ['app.js','core.js','settings.js','export-worker.js','solid.js','style.css','assets/corner.stl','assets/edge.stl','assets/center.stl','assets/v2/corner.stl','assets/v2/edge.stl','vendor/manifold.wasm']){
+    for(const file of ['changelog.html','changelog.css','app.js','core.js','settings.js','export-worker.js','solid.js','style.css','assets/corner.stl','assets/edge.stl','assets/center.stl','assets/v2/corner.stl','assets/v2/edge.stl','vendor/manifold.wasm']){
       const response=await fetch(origin+'/'+file+'?v='+version,{signal:AbortSignal.timeout(15000),cache:'no-store'});
       assert.equal(response.status,200,'published '+file);
       const digest=buffer=>createHash('sha256').update(buffer).digest('hex');
@@ -97,6 +97,7 @@ try{
   };
   inspectPage=evaluate;
   await send('Page.addScriptToEvaluateOnNewDocument',{source:`
+    document.addEventListener('click',event=>{if(event.target instanceof HTMLAnchorElement && event.target.download)window.__lastFilename=event.target.download;},true);
     const createObjectURL=URL.createObjectURL.bind(URL);
     URL.createObjectURL=blob=>{if(blob.type==='model/stl')window.__lastExport=blob;return createObjectURL(blob);};
     window.__tileformScenes=[];window.__THREE_DEVTOOLS__=new EventTarget();
@@ -208,6 +209,7 @@ try{
   assert.equal(await evaluate("document.querySelector('#export-progressbar').value"),1);
   const output=await evaluate("(async()=>{const buffer=await window.__lastExport.arrayBuffer(),view=new DataView(buffer),n=view.getUint32(80,true),min=[Infinity,Infinity,Infinity],max=[-Infinity,-Infinity,-Infinity];for(let i=0;i<n;i++)for(let j=0;j<9;j++){const x=view.getFloat32(84+i*50+12+j*4,true),axis=j%3;min[axis]=Math.min(min[axis],x);max[axis]=Math.max(max[axis],x);}return {valid:buffer.byteLength===84+50*n,n,size:max.map((v,i)=>Math.round((v-min[i])*100)/100)};})()");
   assert.ok(output.valid&&output.n>0);assert.deepEqual(output.size,[31.8,15.8,3.12]);
+  assert.equal(await evaluate("window.__lastFilename"),'tileform_v3_2x4.stl');
   const reliefHash=await evaluate("(async()=>[...new Uint8Array(await crypto.subtle.digest('SHA-256',await window.__lastExport.arrayBuffer()))].map(x=>x.toString(16).padStart(2,'0')).join(''))()");
   await evaluate("document.querySelector('#relief-toggle').checked=false;document.querySelector('#relief-toggle').dispatchEvent(new Event('change'))");
   await reloadReady('relief preference restored');
@@ -225,6 +227,7 @@ try{
   await evaluate("window.__lastExport=null;document.querySelector('#export').click()");
   await poll(()=>evaluate("window.__lastExport!=null && !document.querySelector('#export').disabled"),'v2 STL export',90000);
   const alternateOutput=await evaluate("(async()=>{const buffer=await window.__lastExport.arrayBuffer(),view=new DataView(buffer),n=view.getUint32(80,true),min=[Infinity,Infinity,Infinity],max=[-Infinity,-Infinity,-Infinity];for(let i=0;i<n;i++)for(let j=0;j<9;j++){const x=view.getFloat32(84+i*50+12+j*4,true),axis=j%3;min[axis]=Math.min(min[axis],x);max[axis]=Math.max(max[axis],x);}return {valid:buffer.byteLength===84+50*n,n,size:max.map((v,i)=>Math.round((v-min[i])*100)/100)};})()");
+  assert.equal(await evaluate("window.__lastFilename"),'tileform_v2_2x4.stl');
   assert.ok(alternateOutput.valid);assert.deepEqual(alternateOutput.size,[32,16,3.12]);
 
   await evaluate("{const el=document.querySelector('#explode-toggle');el.checked=true;el.dispatchEvent(new Event('change'));}document.querySelector('[data-view=\"bottom\"]').click();document.querySelector('#settings-reset').click()");
@@ -274,6 +277,19 @@ try{
   await send('Page.addScriptToEvaluateOnNewDocument',{source:"Object.defineProperty(window,'localStorage',{get(){throw new DOMException('Storage disabled','SecurityError');}});"});
   await reloadReady('disabled storage fallback');
   assert.equal(await evaluate("document.querySelector('#project-name').textContent"),'Tile_2×4');
+  assert.equal(await evaluate("document.querySelector('.settings-storage #settings-note')===null && document.querySelector('#help #settings-note')!==null"),true);
+  await evaluate("document.querySelector('#help-open').click()");
+  assert.equal(await evaluate("document.querySelector('#help section:last-child a').getAttribute('href')"),'./changelog.html');
+  await send('Page.navigate',{url:origin+'/changelog.html'});
+  await poll(()=>evaluate("document.querySelectorAll('.release').length===11"),'release history');
+  assert.equal(await evaluate("document.querySelector('.release-version').textContent"),'v'+version);
+  assert.equal(await evaluate("[...document.querySelectorAll('time')].every(t=>!Number.isNaN(Date.parse(t.dateTime))&&/\\d{4}\\/\\d{2}\\/\\d{2} \\d{2}:\\d{2}/.test(t.textContent))"),true);
+  for(const width of [320,390,1280]){
+    await send('Emulation.setDeviceMetricsOverride',{width,height:844,deviceScaleFactor:1,mobile:width<760});
+    await verifyReadableText();
+  }
+  assert.equal(await evaluate("document.querySelectorAll('#upcoming li').length"),5);
+  assert.equal(await evaluate("document.querySelector('.back-link').getAttribute('href')"),'./');
   console.log('Browser smoke checks passed (desktop and mobile): asset version consistency, preview orientation, startup, presets, maximum size, persisted custom selection, full reset, visible mobile labels, unavailable storage, progress, cancellation and restart, binary STL export');
 }catch(error){
   console.error('Browser test failed:',error?.stack||error);

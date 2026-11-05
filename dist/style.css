@@ -61,3 +61,5 @@ body{font-size:16px}.presets{display:grid;grid-template-columns:repeat(3,minmax(
 
 @media(max-width:760px){.header{padding:0 12px}.brand{gap:8px}.text-button{flex-shrink:0;white-space:nowrap}}
 @media(max-width:359px){.view-top{left:10px;right:10px;gap:6px}.project-icon,.project-label div>span{display:none}.project-label strong{font-size:14px}.project-label{flex-shrink:0}}
+
+.help-history{border-top:1px solid var(--line);margin-top:24px;padding-top:20px}.help-history h3{font-size:18px;margin:0 0 8px}.help-history p{font-size:15px;line-height:1.8}.help-history a{display:inline-block;font-size:16px;font-weight:700;color:#34472c;text-underline-offset:4px;padding:8px 0}a:focus-visible{outline:3px solid #6b8356;outline-offset:4px}
