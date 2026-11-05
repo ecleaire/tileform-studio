@@ -7,13 +7,13 @@ link.addEventListener('click',async event=>{
   content.setAttribute('aria-busy','true');
   content.innerHTML='<span class="eyebrow">UPDATE HISTORY</span><h2 id="history-title">バージョンアップ履歴</h2><p role="status">履歴を読み込んでいます…</p>';
   try{
-    const response=await fetch('./changelog.html?v=1.5.2');
+    const response=await fetch('./changelog.html?v=1.5.3');
     if(!response.ok)throw Error('history unavailable');
     const source=new DOMParser().parseFromString(await response.text(),'text/html').querySelector('main');
     if(!source?.querySelector('.release-list'))throw Error('invalid history');
     source.querySelector('.bottom-back')?.remove();
-    for(const heading of source.querySelectorAll('h2')){const replacement=document.createElement('h3');replacement.id=heading.id;replacement.textContent=heading.textContent;heading.replaceWith(replacement);}
-    const title=source.querySelector('h1'),replacement=document.createElement('h2');replacement.id='history-title';replacement.textContent=title.textContent;title.replaceWith(replacement);
+    for(const heading of source.querySelectorAll('h2')){const replacement=document.createElement('h3');replacement.id=heading.id;replacement.innerHTML=heading.innerHTML;heading.replaceWith(replacement);}
+    const title=source.querySelector('h1'),replacement=document.createElement('h2');replacement.id='history-title';replacement.innerHTML=title.innerHTML;title.replaceWith(replacement);
     content.replaceChildren(...source.childNodes);loaded=true;
   }catch{
     content.innerHTML='<span class="eyebrow">UPDATE HISTORY</span><h2 id="history-title">バージョンアップ履歴</h2><p role="alert">履歴を読み込めませんでした。閉じて開き直すか、<a href="./changelog.html">履歴ページを直接開く</a>からご確認ください。</p>';

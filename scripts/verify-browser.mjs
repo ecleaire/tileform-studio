@@ -56,7 +56,7 @@ try{
       const response=await fetch(origin+'/?verify='+version,{signal:AbortSignal.timeout(10000),cache:'no-store'});
       return response.ok&&(await response.text()).includes('v'+version);
     },'published version '+version,180000);
-    for(const file of ['changelog.html','changelog.css','history-dialog.js','history-dialog.css','formats.js','app.js','core.js','settings.js','export-worker.js','solid.js','style.css','assets/corner.stl','assets/edge.stl','assets/center.stl','assets/v2/corner.stl','assets/v2/edge.stl','vendor/manifold.wasm']){
+    for(const file of ['typography.css','changelog.html','changelog.css','history-dialog.js','history-dialog.css','formats.js','app.js','core.js','settings.js','export-worker.js','solid.js','style.css','assets/corner.stl','assets/edge.stl','assets/center.stl','assets/v2/corner.stl','assets/v2/edge.stl','vendor/manifold.wasm']){
       const response=await fetch(origin+'/'+file+'?v='+version,{signal:AbortSignal.timeout(15000),cache:'no-store'});
       assert.equal(response.status,200,'published '+file);
       const digest=buffer=>createHash('sha256').update(buffer).digest('hex');
@@ -300,9 +300,15 @@ try{
   assert.equal(await evaluate("document.querySelector('.settings-storage #settings-note')===null && document.querySelector('#help #settings-note')!==null"),true);
   await evaluate("document.querySelector('#help-open').click()");
   assert.equal(await evaluate("document.querySelector('#help section:last-child a').getAttribute('href')"),'./changelog.html');
+  for(const width of [320,390,1280]){
+    await send('Emulation.setDeviceMetricsOverride',{width,height:844,deviceScaleFactor:1,mobile:width<760});
+    await verifyReadableText();
+    assert.equal(await evaluate("document.querySelector('#help').scrollWidth<=document.querySelector('#help').clientWidth+1"),true,'help text must fit');
+    assert.deepEqual(await evaluate("[...document.querySelectorAll('#help .keep-text')].filter(el=>el.scrollWidth>el.clientWidth+1).map(el=>el.textContent)"),[],'semantic phrases must fit');
+  }
   const beforeHistory=await evaluate("({url:location.href,name:document.querySelector('#project-name').textContent,scroll:document.querySelector('#help').scrollTop})");
   await evaluate("document.querySelector('.help-history a').click()");
-  await poll(()=>evaluate("document.querySelector('#history-dialog').open && document.querySelectorAll('#history-dialog .release').length===12"),'history popup');
+  await poll(()=>evaluate("document.querySelector('#history-dialog').open && document.querySelectorAll('#history-dialog .release').length===13"),'history popup');
   assert.equal(await evaluate("document.querySelector('#help').open"),false);
   assert.equal(await evaluate("location.href"),beforeHistory.url);
   assert.equal(await evaluate("document.querySelector('#project-name').textContent"),beforeHistory.name);
@@ -310,6 +316,7 @@ try{
     await send('Emulation.setDeviceMetricsOverride',{width,height:844,deviceScaleFactor:1,mobile:width<760});
     await verifyReadableText();
     assert.equal(await evaluate("document.querySelector('#history-dialog').scrollWidth<=document.querySelector('#history-dialog').clientWidth+1"),true);
+    assert.deepEqual(await evaluate("[...document.querySelectorAll('#history-dialog time')].filter(el=>el.getClientRects().length!==1||el.scrollWidth>el.clientWidth+1).map(el=>el.textContent)"),[],'dates must stay together');
   }
   await evaluate("document.querySelector('#history-close').click()");
   await poll(()=>evaluate("document.querySelector('#help').open && !document.querySelector('#history-dialog').open"),'return to help');
@@ -319,7 +326,7 @@ try{
   await send('Input.dispatchKeyEvent',{type:'keyUp',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
   await poll(()=>evaluate("document.querySelector('#help').open && !document.querySelector('#history-dialog').open"),'escape returns to help');
   await send('Page.navigate',{url:origin+'/changelog.html'});
-  await poll(()=>evaluate("document.querySelectorAll('.release').length===12"),'release history');
+  await poll(()=>evaluate("document.querySelectorAll('.release').length===13"),'release history');
   assert.equal(await evaluate("document.querySelector('.release-version').textContent"),'v'+version);
   assert.equal(await evaluate("[...document.querySelectorAll('time')].every(t=>!Number.isNaN(Date.parse(t.dateTime))&&/\\d{4}\\/\\d{2}\\/\\d{2} \\d{2}:\\d{2}/.test(t.textContent))"),true);
   for(const width of [320,390,1280]){
