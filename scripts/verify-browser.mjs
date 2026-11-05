@@ -141,6 +141,7 @@ try{
   assert.equal(await evaluate("document.querySelector('#model-version').value"),'v3');
   assert.equal(await evaluate("document.querySelector('#relief-toggle').checked"),true);
   assert.equal(await evaluate("document.querySelector('#other-formats').open"),false);
+  assert.equal(await evaluate("(()=>{const title=document.querySelector('.inspector .step-heading').getBoundingClientRect(),unit=document.querySelector('.inspector .unit-tag').getBoundingClientRect();return unit.top>=title.bottom || unit.left>=title.right+4;})()"),true,'desktop heading and unit must be separated');
   // The v3 clearance must increase capacity exactly at a physical-size boundary.
   await evaluate("for(const [id,value] of [['plate-width','31.8'],['plate-depth','47.8']]){const el=document.querySelector('#'+id);el.value=value;el.dispatchEvent(new Event('input'));}document.querySelector('#plate-max').click()");
   assert.deepEqual(await evaluate("[document.querySelector('#rows').value,document.querySelector('#cols').value]"),['6','4']);
