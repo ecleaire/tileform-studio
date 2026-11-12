@@ -29,7 +29,7 @@ button,input,select{font:inherit}select{color:inherit;outline-offset:4px}.size-r
 .collapsible-section[open]>summary.section-heading{margin-bottom:20px}
 .collapse-summary-end{display:inline-flex;align-items:center;gap:7px}
 .collapse-chevron{width:8px;height:8px;flex-shrink:0;display:inline-block;border-right:1.5px solid #92968a;border-bottom:1.5px solid #92968a;transform:rotate(45deg);transition:transform .18s;margin:-4px 4px 0 8px}
-.collapsible-section[open] .collapse-chevron{transform:rotate(225deg);margin-top:4px}
+.collapsible-section[open]>summary .collapse-chevron{transform:rotate(225deg);margin-top:4px}
 
 /* Help notices */
 dialog{max-height:calc(100dvh - 36px);overflow-y:auto}
