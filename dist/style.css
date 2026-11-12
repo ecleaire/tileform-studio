@@ -70,4 +70,9 @@ body{font-size:16px}.presets{display:grid;grid-template-columns:repeat(3,minmax(
 
 .other-formats{border-top:1px solid var(--line);margin:0 0 16px;padding-top:12px}.other-formats summary{font-size:15px;font-weight:600;cursor:pointer;color:#43533b;line-height:1.7}.early-access{font-size:14px;line-height:1.8;color:#596352;margin:12px 0}.format-buttons{display:grid;gap:9px}.format-buttons button{min-height:44px;font-size:15px;text-align:left}.format-note{font-size:14px;color:#596352;line-height:1.8;margin:12px 0 0}
 
-@media(min-width:761px){.inspector>.control-section:first-child>.section-heading{align-items:flex-start;flex-direction:column;gap:8px}.inspector>.control-section:first-child>.section-heading .unit-tag{align-self:flex-end}}
+
+.dimension-details{border-top:1px solid var(--line);margin-top:18px;padding-top:12px}
+.dimension-details>summary.section-heading{min-height:28px;font-size:15px;font-weight:700;color:#283922}
+.dimension-details[open]>summary.section-heading{margin-bottom:8px}
+.dimension-pitch{margin:0}
+.dimension-details .size-result{margin-top:4px}

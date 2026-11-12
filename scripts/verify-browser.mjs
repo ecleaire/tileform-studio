@@ -141,7 +141,14 @@ try{
   assert.equal(await evaluate("document.querySelector('#model-version').value"),'v4');
   assert.equal(await evaluate("document.querySelector('#relief-toggle').checked"),true);
   assert.equal(await evaluate("document.querySelector('#other-formats').open"),false);
-  assert.equal(await evaluate("(()=>{const title=document.querySelector('.inspector .step-heading').getBoundingClientRect(),unit=document.querySelector('.inspector .unit-tag').getBoundingClientRect();return unit.top>=title.bottom || unit.left>=title.right+4;})()"),true,'desktop heading and unit must be separated');
+  const dimensionsVisible = () => evaluate("document.querySelector('#size-mm').checkVisibility()");
+  assert.equal(await dimensionsVisible(), false);
+  await evaluate("document.querySelector('#dimension-details summary').click()");
+  assert.equal(await dimensionsVisible(), true);
+  assert.match(await evaluate("document.querySelector('#size-mm').textContent"), /31\.2 mm/);
+  assert.match(await evaluate("document.querySelector('.dimension-pitch').textContent"), /8 mm/);
+  await evaluate("document.querySelector('#dimension-details summary').click()");
+  assert.equal(await dimensionsVisible(), false);
   await evaluate("localStorage.setItem('tileform.settings.v1',JSON.stringify({version:1,settings:{modelVersion:'v3',rows:2,cols:4}}))");
   await reloadReady('legacy v3 automatically upgrades to v4');
   assert.equal(await evaluate("document.querySelector('#model-version').value"),'v4');
@@ -317,7 +324,7 @@ try{
   }
   const beforeHistory=await evaluate("({url:location.href,name:document.querySelector('#project-name').textContent,scroll:document.querySelector('#help').scrollTop})");
   await evaluate("document.querySelector('.help-history a').click()");
-  await poll(()=>evaluate("document.querySelector('#history-dialog').open && document.querySelectorAll('#history-dialog .release').length===16"),'history popup');
+  await poll(()=>evaluate("document.querySelector('#history-dialog').open && document.querySelectorAll('#history-dialog .release').length===17"),'history popup');
   assert.equal(await evaluate("document.querySelector('#help').open"),false);
   assert.equal(await evaluate("location.href"),beforeHistory.url);
   assert.equal(await evaluate("document.querySelector('#project-name').textContent"),beforeHistory.name);
@@ -335,7 +342,7 @@ try{
   await send('Input.dispatchKeyEvent',{type:'keyUp',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
   await poll(()=>evaluate("document.querySelector('#help').open && !document.querySelector('#history-dialog').open"),'escape returns to help');
   await send('Page.navigate',{url:origin+'/changelog.html'});
-  await poll(()=>evaluate("document.querySelectorAll('.release').length===16"),'release history');
+  await poll(()=>evaluate("document.querySelectorAll('.release').length===17"),'release history');
   assert.equal(await evaluate("document.querySelector('.release-version').textContent"),'v'+version);
   assert.equal(await evaluate("[...document.querySelectorAll('time')].every(t=>!Number.isNaN(Date.parse(t.dateTime))&&/\\d{4}\\/\\d{2}\\/\\d{2} \\d{2}:\\d{2}/.test(t.textContent))"),true);
   for(const width of [320,390,1280]){
