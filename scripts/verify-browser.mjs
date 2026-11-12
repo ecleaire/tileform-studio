@@ -143,6 +143,7 @@ try{
   assert.equal(await evaluate("document.querySelector('#other-formats').open"),false);
   const advancedItemsVisible = () => evaluate("Array.from(document.querySelectorAll('.advanced-settings-content summary')).filter(el=>el.checkVisibility()).length");
   assert.equal(await advancedItemsVisible(), 0);
+  assert.equal(await evaluate("document.querySelector('#export').checkVisibility()"),true);
   await evaluate("document.querySelector('#advanced-settings > summary').click()");
   assert.equal(await advancedItemsVisible(), 4);
   const dimensionsVisible = () => evaluate("document.querySelector('#size-mm').checkVisibility()");
