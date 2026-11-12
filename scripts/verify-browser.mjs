@@ -137,7 +137,7 @@ try{
   assert.notEqual(await evaluate("getComputedStyle(document.querySelector('#parts-details')).display"),'none');
   await evaluate("document.querySelector('#parts-toggle').click()");
   assert.equal(await evaluate("getComputedStyle(document.querySelector('#parts-details')).display"),'none');
-  assert.ok(await evaluate("parseFloat(getComputedStyle(document.querySelector('.step-heading')).fontSize)>=20 && document.querySelector('#export').getBoundingClientRect().height>=58"));
+  assert.ok(await evaluate("[...document.querySelectorAll('.step-heading')].every(el=>parseFloat(getComputedStyle(el).fontSize)>=28) && document.querySelector('#export').getBoundingClientRect().height>=58"));
   assert.equal(await evaluate("document.querySelector('#model-version').value"),'v4');
   assert.equal(await evaluate("document.querySelector('#relief-toggle').checked"),true);
   assert.equal(await evaluate("document.querySelector('#other-formats').open"),false);
@@ -280,6 +280,7 @@ try{
   for(const width of [320,390]){
   await send('Emulation.setDeviceMetricsOverride',{width,height:844,deviceScaleFactor:1,mobile:true});
   await verifyReadableText();
+  assert.equal(await evaluate("Array.from(document.querySelectorAll('.step-heading')).every(el=>el.getBoundingClientRect().right<=el.parentElement.getBoundingClientRect().right+1)"),true,'step headings must fit in the mobile controls');
   for(const view of ['top','bottom','iso']){
     await evaluate(`document.querySelector('[data-view="${view}"]').click();document.querySelector('#fit').click()`);
     await evaluate("new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))");
@@ -324,7 +325,7 @@ try{
   }
   const beforeHistory=await evaluate("({url:location.href,name:document.querySelector('#project-name').textContent,scroll:document.querySelector('#help').scrollTop})");
   await evaluate("document.querySelector('.help-history a').click()");
-  await poll(()=>evaluate("document.querySelector('#history-dialog').open && document.querySelectorAll('#history-dialog .release').length===17"),'history popup');
+  await poll(()=>evaluate("document.querySelector('#history-dialog').open && document.querySelectorAll('#history-dialog .release').length===18"),'history popup');
   assert.equal(await evaluate("document.querySelector('#help').open"),false);
   assert.equal(await evaluate("location.href"),beforeHistory.url);
   assert.equal(await evaluate("document.querySelector('#project-name').textContent"),beforeHistory.name);
@@ -342,7 +343,7 @@ try{
   await send('Input.dispatchKeyEvent',{type:'keyUp',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
   await poll(()=>evaluate("document.querySelector('#help').open && !document.querySelector('#history-dialog').open"),'escape returns to help');
   await send('Page.navigate',{url:origin+'/changelog.html'});
-  await poll(()=>evaluate("document.querySelectorAll('.release').length===17"),'release history');
+  await poll(()=>evaluate("document.querySelectorAll('.release').length===18"),'release history');
   assert.equal(await evaluate("document.querySelector('.release-version').textContent"),'v'+version);
   assert.equal(await evaluate("[...document.querySelectorAll('time')].every(t=>!Number.isNaN(Date.parse(t.dateTime))&&/\\d{4}\\/\\d{2}\\/\\d{2} \\d{2}:\\d{2}/.test(t.textContent))"),true);
   for(const width of [320,390,1280]){
