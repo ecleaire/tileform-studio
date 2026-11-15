@@ -213,7 +213,7 @@ try{
   await evaluate("{const el=document.querySelector('#rows');el.value='2.5';el.dispatchEvent(new Event('input',{bubbles:true}));document.querySelector('.stepper button[data-axis=\"rows\"][data-delta=\"1\"]').click();}");
   assert.equal(await evaluate("document.querySelector('#rows').value"),'3');
   await evaluate("document.querySelector('[data-view=\"top\"]').click();document.querySelector('#fit').click()");
-  assert.equal(await evaluate("document.querySelector('[data-view=\"top\"]').classList.contains('active')"),true);
+  assert.equal(await evaluate("document.querySelector('[data-view=\"top\"]').getAttribute('aria-pressed')"),'true');
   await evaluate("document.querySelector('#model-color-hex').closest('details').open=true;{const el=document.querySelector('#model-color-hex');el.value='#abc';el.dispatchEvent(new Event('input',{bubbles:true}));}");
   assert.equal(await evaluate("document.querySelector('#model-color').value"),'#aabbcc');
   assert.equal(await evaluate("document.querySelector('#model-color-hex').value"),'#abc');
@@ -223,6 +223,13 @@ try{
   assert.equal(await evaluate("document.querySelector('#rows').disabled && document.querySelector('#cols').disabled"),true);
   await poll(()=>evaluate("document.querySelector('#export-status').textContent.includes('保存しました')"),'STL export finished',90000);
   assert.equal(await evaluate("!document.querySelector('#rows').disabled && !document.querySelector('#export').disabled"),true);
+  const stlHash = "(async()=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',await window.__lastExport.arrayBuffer()))))()";
+  const visibleFloorExport = await evaluate(stlHash);
+  const floorState = `({pressed:document.querySelector('#floor-toggle').getAttribute('aria-pressed'),visible:window.__tileformScene.children.find(group=>group.children.some(mesh=>mesh.isLineLoop)).visible})`;
+  await poll(()=>evaluate("Boolean(window.__tileformScene)"),'preview frame');
+  assert.deepEqual(await evaluate(floorState),{pressed:'true',visible:true});
+  await evaluate("document.querySelector('#floor-toggle').click()");
+  assert.deepEqual(await evaluate(floorState),{pressed:'false',visible:false});
   await send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
   await delay(300);
   assert.equal(await evaluate("getComputedStyle(document.querySelector('.studio')).order"),'-1');
@@ -238,6 +245,8 @@ try{
   // Save a manageable model plus custom, decimal bed dimensions and color settings.
   await evaluate("document.querySelector('[data-size=\"4,6\"]').click();for(const [id,value] of [['plate-width','179.5'],['plate-depth','120']]){const el=document.querySelector('#'+id);el.value=value;el.dispatchEvent(new Event('input'));}document.querySelector('#color-toggle').checked=true;document.querySelector('#color-toggle').dispatchEvent(new Event('change'));");
   await reloadReady('restored settings');
+  await poll(()=>evaluate("Boolean(window.__tileformScene)"),'restored preview frame');
+  assert.deepEqual(await evaluate(floorState),{pressed:'false',visible:false});
   assert.deepEqual(await evaluate("({rows:document.querySelector('#rows').value,cols:document.querySelector('#cols').value,width:document.querySelector('#plate-width').value,depth:document.querySelector('#plate-depth').value,preset:document.querySelector('#plate-preset').value,color:document.querySelector('#model-color').value,parts:document.querySelector('#color-toggle').checked})"),{rows:'4',cols:'6',width:'179.5',depth:'120',preset:'custom',color:'#123456',parts:true});
   // A genuinely running large union can be terminated, without producing an STL.
   await evaluate("window.__lastExport=null;for(const id of ['rows','cols']){const el=document.querySelector('#'+id);el.value='32';el.dispatchEvent(new Event('input'));}document.querySelector('#export').click()");
@@ -247,6 +256,7 @@ try{
   assert.equal(await evaluate("window.__lastExport==null && !document.querySelector('#rows').disabled && document.querySelector('#export-cancel').hidden"),true);
   await evaluate("document.querySelector('[data-size=\"2,4\"]').click();document.querySelector('#export').click()");
   await poll(()=>evaluate("document.querySelector('#export-status').textContent.includes('保存しました')"),'export after cancellation',90000);
+  assert.deepEqual(await evaluate(stlHash),visibleFloorExport,'floor visibility must not change exported STL bytes');
   assert.equal(await evaluate("document.querySelector('#export-progressbar').value"),1);
   const output=await evaluate("(async()=>{const buffer=await window.__lastExport.arrayBuffer(),view=new DataView(buffer),n=view.getUint32(80,true),min=[Infinity,Infinity,Infinity],max=[-Infinity,-Infinity,-Infinity];for(let i=0;i<n;i++)for(let j=0;j<9;j++){const x=view.getFloat32(84+i*50+12+j*4,true),axis=j%3;min[axis]=Math.min(min[axis],x);max[axis]=Math.max(max[axis],x);}return {valid:buffer.byteLength===84+50*n,n,size:max.map((v,i)=>Math.round((v-min[i])*100)/100)};})()");
   assert.ok(output.valid&&output.n>0);assert.deepEqual(output.size,[31.2,15.2,3.12]);
@@ -285,7 +295,8 @@ try{
   await evaluate("{const el=document.querySelector('#explode-toggle');el.checked=true;el.dispatchEvent(new Event('change'));}document.querySelector('[data-view=\"bottom\"]').click();document.querySelector('#settings-reset').click()");
   assert.equal(await evaluate("document.querySelector('#explode-toggle').checked"),false);
   assert.equal(await evaluate("document.querySelector('#model-version').value"),'v4');
-  assert.equal(await evaluate("document.querySelector('[data-view].active').dataset.view"),'iso');
+  assert.equal(await evaluate("document.querySelector('[data-view][aria-pressed=\"true\"]').dataset.view"),'iso');
+  assert.deepEqual(await evaluate(floorState),{pressed:'true',visible:true});
 
   assert.equal(await evaluate("document.querySelector('#project-name').textContent"),'Tile_2×4');
   assert.equal(await evaluate("document.querySelector('#plate-preset').value"),'a1-mini');
@@ -341,7 +352,7 @@ try{
   }
   const beforeHistory=await evaluate("({url:location.href,name:document.querySelector('#project-name').textContent,scroll:document.querySelector('#help').scrollTop})");
   await evaluate("document.querySelector('.help-history a').click()");
-  await poll(()=>evaluate("document.querySelector('#history-dialog').open && document.querySelectorAll('#history-dialog .release').length===20"),'history popup');
+  await poll(()=>evaluate("document.querySelector('#history-dialog').open && document.querySelectorAll('#history-dialog .release').length===21"),'history popup');
   assert.equal(await evaluate("document.querySelector('#help').open"),false);
   assert.equal(await evaluate("location.href"),beforeHistory.url);
   assert.equal(await evaluate("document.querySelector('#project-name').textContent"),beforeHistory.name);
@@ -359,7 +370,7 @@ try{
   await send('Input.dispatchKeyEvent',{type:'keyUp',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
   await poll(()=>evaluate("document.querySelector('#help').open && !document.querySelector('#history-dialog').open"),'escape returns to help');
   await send('Page.navigate',{url:origin+'/changelog.html'});
-  await poll(()=>evaluate("document.querySelectorAll('.release').length===20"),'release history');
+  await poll(()=>evaluate("document.querySelectorAll('.release').length===21"),'release history');
   assert.equal(await evaluate("document.querySelector('.release-version').textContent"),'v'+version);
   assert.equal(await evaluate("[...document.querySelectorAll('time')].every(t=>!Number.isNaN(Date.parse(t.dateTime))&&/\\d{4}\\/\\d{2}\\/\\d{2} \\d{2}:\\d{2}/.test(t.textContent))"),true);
   for(const width of [320,390,1280]){
